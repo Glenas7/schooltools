@@ -1,0 +1,136 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { useSchools } from '../../contexts/SchoolsContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { useToast } from '@/hooks/use-toast';
+import { User, Lock, GraduationCap } from 'lucide-react';
+
+const LoginForm = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { login, isAuthenticated, user } = useAuth();
+  const { schools, fetchUserSchools } = useSchools();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      await login(email, password);
+    } catch (error: any) {
+      toast({
+        title: "Login failed",
+        description: error.message || "Invalid email or password.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      toast({
+        title: "Login successful",
+        description: "Welcome to School Scheduler!",
+      });
+      
+      // Fetch user's schools to determine where to redirect
+      fetchUserSchools();
+    }
+  }, [isAuthenticated, user, toast, fetchUserSchools]);
+
+  // Handle redirect logic based on schools
+  useEffect(() => {
+    if (isAuthenticated && user && schools !== undefined) {
+      if (schools.length === 0) {
+        // User has no schools, redirect to school setup
+        navigate('/school-setup', { replace: true });
+      } else if (user.last_accessed_school_id && schools.find(s => s.id === user.last_accessed_school_id)) {
+        // User has a last accessed school and it's still available, redirect there
+        navigate(`/school/${user.last_accessed_school_id}/schedule`, { replace: true });
+      } else if (schools.length === 1) {
+        // User has one school, go directly to that school
+        navigate(`/school/${schools[0].id}/schedule`, { replace: true });
+      } else {
+        // User has multiple schools and no valid last accessed school, let them choose
+        navigate('/school-select', { replace: true });
+      }
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, user, schools, navigate]);
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">
+      <Card className="w-full max-w-md shadow-xl">
+        <CardHeader className="space-y-1">
+          <div className="flex items-center justify-center mb-4">
+            <GraduationCap className="h-8 w-8 text-primary" />
+            <span className="ml-2 text-2xl font-bold text-gray-900">School Scheduler</span>
+          </div>
+          <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
+          <CardDescription className="text-center">
+            Sign in to access your school's scheduling system
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium">Email</label>
+              <div className="relative">
+                <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  id="email"
+                  type="email" 
+                  placeholder="Enter your email address" 
+                  value={email} 
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full pl-10"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="text-sm font-medium">Password</label>
+                <Link to="/forgot-password" className="text-xs text-primary hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  id="password"
+                  type="password" 
+                  placeholder="Enter your password" 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full pl-10"
+                />
+              </div>
+            </div>
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? 'Signing in...' : 'Sign In'}
+            </Button>
+          </form>
+        </CardContent>
+        <CardFooter className="flex flex-col space-y-2">
+          <div className="text-sm text-center text-muted-foreground">
+            Don't have an account?{' '}
+            <Link to="/signup" className="text-primary hover:underline">
+              Sign up here
+            </Link>
+          </div>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+};
+
+export default LoginForm;

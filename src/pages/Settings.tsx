@@ -1,0 +1,730 @@
+import React, { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useAuth } from '../contexts/AuthContext';
+import { Navigate } from 'react-router-dom';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2 } from 'lucide-react';
+import { compareLessons, ComparisonResult, SheetLesson, DbLesson, wouldCauseConflict, alignLessonWithSheet } from '../lib/lessonComparisonService';
+import { useToast } from '@/hooks/use-toast';
+import { useSchool } from '../contexts/SchoolContext';
+import { supabase } from '../lib/supabaseClient';
+
+const Settings = () => {
+  const { user } = useAuth();
+  const { isSchoolAdmin, currentSchool, refreshSchool } = useSchool();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [comparisonResults, setComparisonResults] = useState<ComparisonResult | null>(null);
+  const [aligningStatus, setAligningStatus] = useState<{ [key: string]: { loading: boolean; error: string | null; conflict: boolean; conflictMessage: string | null } }>({});
+  const { toast } = useToast();
+
+  // Google Sheet URL state
+  const [googleSheetUrl, setGoogleSheetUrl] = useState(currentSchool?.google_sheet_url || '');
+  const [googleSheetName, setGoogleSheetName] = useState(currentSchool?.google_sheet_name || 'Sheet1');
+  const [googleSheetRange, setGoogleSheetRange] = useState(currentSchool?.google_sheet_range || 'A2:A');
+  const [isSavingSheetUrl, setIsSavingSheetUrl] = useState(false);
+
+  // Lessons Google Sheet state
+  const [lessonsGoogleSheetUrl, setLessonsGoogleSheetUrl] = useState(currentSchool?.google_sheet_lessons_url || '');
+  const [lessonsGoogleSheetName, setLessonsGoogleSheetName] = useState(currentSchool?.google_sheet_lessons_name || 'lessons');
+  const [lessonsGoogleSheetRange, setLessonsGoogleSheetRange] = useState(currentSchool?.google_sheet_lessons_range || 'A1:E1000');
+  const [isSavingLessonsSheetUrl, setIsSavingLessonsSheetUrl] = useState(false);
+
+  // Sync google sheet state when currentSchool changes
+  useEffect(() => {
+    setGoogleSheetUrl(currentSchool?.google_sheet_url || '');
+    setGoogleSheetName(currentSchool?.google_sheet_name || 'Sheet1');
+    setGoogleSheetRange(currentSchool?.google_sheet_range || 'A2:A');
+    
+    setLessonsGoogleSheetUrl(currentSchool?.google_sheet_lessons_url || '');
+    setLessonsGoogleSheetName(currentSchool?.google_sheet_lessons_name || 'lessons');
+    setLessonsGoogleSheetRange(currentSchool?.google_sheet_lessons_range || 'A1:E1000');
+  }, [
+    currentSchool?.google_sheet_url, 
+    currentSchool?.google_sheet_name, 
+    currentSchool?.google_sheet_range,
+    currentSchool?.google_sheet_lessons_url,
+    currentSchool?.google_sheet_lessons_name,
+    currentSchool?.google_sheet_lessons_range
+  ]);
+
+  // Redirect non-admin users (school-specific admin check)
+  if (!isSchoolAdmin) {
+    return <Navigate to="/" />;
+  }
+
+  const handleSaveGoogleSheetUrl = async () => {
+    if (!currentSchool) return;
+    
+    setIsSavingSheetUrl(true);
+    try {
+      const { error } = await supabase
+        .from('schools')
+        .update({ 
+          google_sheet_url: googleSheetUrl || null,
+          google_sheet_name: googleSheetName || 'Sheet1',
+          google_sheet_range: googleSheetRange || 'A2:A'
+        })
+        .eq('id', currentSchool.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await refreshSchool();
+      
+      toast({
+        title: "Google Sheet configuration updated",
+        description: "The Google Sheet settings have been saved successfully.",
+      });
+    } catch (error) {
+      console.error('Error updating Google Sheet configuration:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update Google Sheet configuration. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingSheetUrl(false);
+    }
+  };
+
+  const handleSaveLessonsGoogleSheetUrl = async () => {
+    if (!currentSchool) return;
+    
+    setIsSavingLessonsSheetUrl(true);
+    try {
+      const { error } = await supabase
+        .from('schools')
+        .update({ 
+          google_sheet_lessons_url: lessonsGoogleSheetUrl || null,
+          google_sheet_lessons_name: lessonsGoogleSheetName || 'lessons',
+          google_sheet_lessons_range: lessonsGoogleSheetRange || 'A1:E1000'
+        })
+        .eq('id', currentSchool.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await refreshSchool();
+      
+      toast({
+        title: "Lessons Google Sheet configuration updated",
+        description: "The lessons Google Sheet settings have been saved successfully.",
+      });
+    } catch (error) {
+      console.error('Error updating lessons Google Sheet configuration:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update lessons Google Sheet configuration. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingLessonsSheetUrl(false);
+    }
+  };
+
+  const handleCheckLessons = async () => {
+    if (!currentSchool) {
+      setError('No school selected');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setIsModalOpen(true);
+    setAligningStatus({});
+    
+    try {
+      // Call the comparison service with school ID
+      const results = await compareLessons(currentSchool.id);
+      setComparisonResults(results);
+      
+      // Display a message if no mismatches found
+      if (
+        results.missingInDb.length === 0 && 
+        results.missingInSheet.length === 0 && 
+        results.mismatched.length === 0
+      ) {
+        console.log('All lessons match between database and Google Sheets!');
+      }
+    } catch (err) {
+      console.error('Error comparing lessons:', err);
+      setError('Failed to compare lessons: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleAlignWithSheet = async (dbLesson: DbLesson, sheetLesson: SheetLesson) => {
+    const lessonId = dbLesson.id;
+    
+    // Set loading state
+    setAligningStatus(prev => ({
+      ...prev,
+      [lessonId]: { loading: true, error: null, conflict: false, conflictMessage: null }
+    }));
+    
+    try {
+      // Step 1: Check for conflicts first
+      const { hasConflict, conflictMessage } = await wouldCauseConflict(dbLesson, sheetLesson);
+      
+      if (hasConflict) {
+        setAligningStatus(prev => ({
+          ...prev,
+          [lessonId]: { loading: false, error: null, conflict: true, conflictMessage }
+        }));
+        
+        toast({
+          title: "Cannot align lesson",
+          description: conflictMessage || "Would cause a scheduling conflict",
+          variant: "destructive"
+        });
+        
+        return;
+      }
+      
+      // Step 2: If no conflicts, perform the alignment
+      const result = await alignLessonWithSheet(dbLesson, sheetLesson);
+      
+      if (result.success) {
+        toast({
+          title: "Lesson aligned",
+          description: "Successfully aligned lesson with Google Sheet data",
+        });
+        
+        // Update the comparison results
+        if (comparisonResults) {
+          // Create updated mismatched array without this aligned lesson
+          const updatedMismatched = comparisonResults.mismatched.filter(
+            mismatch => mismatch.dbLesson.id !== lessonId
+          );
+          
+          // Add this lesson to matched array
+          const newMatched = [
+            ...comparisonResults.matched,
+            { dbLesson: result.updatedLesson!, sheetLesson }
+          ];
+          
+          setComparisonResults({
+            ...comparisonResults,
+            mismatched: updatedMismatched,
+            matched: newMatched
+          });
+        }
+        
+        // Clear the aligning status for this lesson
+        setAligningStatus(prev => {
+          const newStatus = { ...prev };
+          delete newStatus[lessonId];
+          return newStatus;
+        });
+      } else {
+        setAligningStatus(prev => ({
+          ...prev,
+          [lessonId]: { 
+            loading: false, 
+            error: result.message, 
+            conflict: false,
+            conflictMessage: null 
+          }
+        }));
+        
+        toast({
+          title: "Failed to align lesson",
+          description: result.message,
+          variant: "destructive"
+        });
+      }
+    } catch (err) {
+      console.error('Error aligning lesson:', err);
+      
+      setAligningStatus(prev => ({
+        ...prev,
+        [lessonId]: { 
+          loading: false, 
+          error: err.message || 'Failed to align lesson', 
+          conflict: false,
+          conflictMessage: null 
+        }
+      }));
+      
+      toast({
+        title: "Error",
+        description: err.message || "Failed to align lesson with Google Sheet data",
+        variant: "destructive"
+      });
+    }
+  };
+
+  return (
+    <div className="container mx-auto py-8">
+      <h1 className="text-3xl font-bold mb-6">Settings</h1>
+      
+      {/* School Configuration Section */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>School Configuration</CardTitle>
+          <CardDescription>Configure basic settings for {currentSchool?.name}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="google-sheet-url">Google Sheet URL</Label>
+            <div className="flex gap-2">
+              <Input
+                id="google-sheet-url"
+                type="url"
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                value={googleSheetUrl}
+                onChange={(e) => setGoogleSheetUrl(e.target.value)}
+                className="flex-1"
+              />
+              <Button 
+                onClick={handleSaveGoogleSheetUrl}
+                disabled={isSavingSheetUrl}
+                size="sm"
+              >
+                {isSavingSheetUrl ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Save
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Enter the URL of your Google Sheet containing student data.
+              {googleSheetUrl && (
+                <a 
+                  href={googleSheetUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="ml-2 inline-flex items-center text-blue-600 hover:text-blue-800"
+                >
+                  View Sheet <ExternalLink className="h-3 w-3 ml-1" />
+                </a>
+              )}
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="google-sheet-name">Sheet Name</Label>
+              <Input
+                id="google-sheet-name"
+                type="text"
+                placeholder="Sheet1"
+                value={googleSheetName}
+                onChange={(e) => setGoogleSheetName(e.target.value)}
+              />
+              <p className="text-sm text-muted-foreground">
+                Name of the worksheet tab (e.g., "Sheet1", "Students", etc.)
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="google-sheet-range">Range</Label>
+              <Input
+                id="google-sheet-range"
+                type="text"
+                placeholder="A2:A"
+                value={googleSheetRange}
+                onChange={(e) => setGoogleSheetRange(e.target.value)}
+              />
+              <p className="text-sm text-muted-foreground">
+                Cell range for student names (e.g., "A2:A", "B1:B100")
+              </p>
+            </div>
+          </div>
+          
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h4 className="font-medium text-blue-900 mb-2">Configuration Summary</h4>
+            <p className="text-sm text-blue-800">
+              Student names will be read from <strong>{googleSheetName || 'Sheet1'}</strong> 
+              {' '}in range <strong>{googleSheetRange || 'A2:A'}</strong>
+              {googleSheetUrl ? ' of your configured Google Sheet.' : '. Please configure a Google Sheet URL first.'}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Lessons Google Sheet Configuration Section */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Lessons Google Sheet Configuration</CardTitle>
+          <CardDescription>Configure Google Sheets integration for lessons comparison and sync</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="lessons-google-sheet-url">Lessons Google Sheet URL</Label>
+            <div className="flex gap-2">
+              <Input
+                id="lessons-google-sheet-url"
+                type="url"
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                value={lessonsGoogleSheetUrl}
+                onChange={(e) => setLessonsGoogleSheetUrl(e.target.value)}
+                className="flex-1"
+              />
+              <Button 
+                onClick={handleSaveLessonsGoogleSheetUrl}
+                disabled={isSavingLessonsSheetUrl}
+                size="sm"
+              >
+                {isSavingLessonsSheetUrl ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Save
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Enter the URL of your Google Sheet containing lessons data for comparison.
+              {lessonsGoogleSheetUrl && (
+                <a 
+                  href={lessonsGoogleSheetUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="ml-2 inline-flex items-center text-blue-600 hover:text-blue-800"
+                >
+                  View Sheet <ExternalLink className="h-3 w-3 ml-1" />
+                </a>
+              )}
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="lessons-google-sheet-name">Lessons Sheet Name</Label>
+              <Input
+                id="lessons-google-sheet-name"
+                type="text"
+                placeholder="lessons"
+                value={lessonsGoogleSheetName}
+                onChange={(e) => setLessonsGoogleSheetName(e.target.value)}
+              />
+              <p className="text-sm text-muted-foreground">
+                Name of the worksheet tab containing lessons (e.g., "lessons", "Sheet1")
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="lessons-google-sheet-range">Lessons Range</Label>
+              <Input
+                id="lessons-google-sheet-range"
+                type="text"
+                placeholder="A1:E1000"
+                value={lessonsGoogleSheetRange}
+                onChange={(e) => setLessonsGoogleSheetRange(e.target.value)}
+              />
+              <p className="text-sm text-muted-foreground">
+                Cell range for lessons data (e.g., "A1:E1000", "A2:E100")
+              </p>
+            </div>
+          </div>
+          
+          <div className="bg-purple-50 p-4 rounded-lg">
+            <h4 className="font-medium text-purple-900 mb-2">Lessons Configuration Summary</h4>
+            <p className="text-sm text-purple-800">
+              Lessons data will be read from <strong>{lessonsGoogleSheetName || 'lessons'}</strong> 
+              {' '}in range <strong>{lessonsGoogleSheetRange || 'A1:E1000'}</strong>
+              {lessonsGoogleSheetUrl ? ' of your configured lessons Google Sheet.' : '. Please configure a lessons Google Sheet URL first.'}
+            </p>
+            <p className="text-sm text-purple-700 mt-2">
+              Expected columns: Student Name, Duration, Teacher, Start Date, Subject
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Data Maintenance Section */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Data Maintenance</CardTitle>
+          <CardDescription>Compare and reconcile data between database and external sources</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-4">
+            Click the button below to compare lessons in the database with those in the Google Sheet.
+            This will identify any discrepancies that need to be addressed.
+          </p>
+          <Button onClick={handleCheckLessons}>
+            Check Lessons vs Google Sheets
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Lesson Comparison Results</DialogTitle>
+            <DialogDescription>
+              Comparison between database lessons and Google Sheet lessons
+            </DialogDescription>
+          </DialogHeader>
+
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-10">
+              <Loader2 className="h-10 w-10 animate-spin text-gray-500 mb-2" />
+              <p className="text-gray-500">Comparing lessons...</p>
+            </div>
+          ) : error ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : comparisonResults ? (
+            <>
+              {comparisonResults.missingInDb.length === 0 &&
+               comparisonResults.missingInSheet.length === 0 &&
+               comparisonResults.mismatched.length === 0 &&
+               comparisonResults.matched.length > 0 ? (
+                <div className="py-8 text-center">
+                  <Check className="mx-auto h-16 w-16 text-green-500 mb-4" />
+                  <h3 className="text-xl font-medium text-green-600 mb-2">Perfect Match!</h3>
+                  <p className="text-gray-600">
+                    All lessons in the database match those in the Google Sheet. No discrepancies found.
+                  </p>
+                </div>
+              ) : (
+                <Tabs defaultValue="missing-in-db">
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="matched" className="relative">
+                      <span>Matched</span>
+                      {comparisonResults.matched.length > 0 && (
+                        <span className="ml-2 bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                          {comparisonResults.matched.length}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="missing-in-db" className="relative">
+                      <span>Missing in Database</span>
+                      {comparisonResults.missingInDb.length > 0 && (
+                        <span className="ml-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                          {comparisonResults.missingInDb.length}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="missing-in-sheet" className="relative">
+                      <span>Missing in Sheet</span>
+                      {comparisonResults.missingInSheet.length > 0 && (
+                        <span className="ml-2 bg-yellow-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                          {comparisonResults.missingInSheet.length}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="mismatched" className="relative">
+                      <span>Mismatched</span>
+                      {comparisonResults.mismatched.length > 0 && (
+                        <span className="ml-2 bg-orange-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                          {comparisonResults.mismatched.length}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="matched" className="py-4">
+                    <h3 className="text-lg font-semibold mb-4">Perfectly Matched Lessons</h3>
+                    {comparisonResults.matched.length === 0 ? (
+                      <p className="text-orange-600 flex items-center">
+                        <AlertTriangle className="h-5 w-5 mr-2" /> No perfectly matched lessons found
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-4">
+                        {comparisonResults.matched.map((match, idx) => (
+                          <Card key={idx} className="bg-green-50">
+                            <CardHeader className="py-3">
+                              <CardTitle className="text-lg flex items-center">
+                                <Check className="h-5 w-5 mr-2 text-green-500" />
+                                {match.dbLesson.studentName}
+                              </CardTitle>
+                              <CardDescription>{match.dbLesson.instrumentName}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="py-2">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <ul className="space-y-1 text-sm">
+                                    <li><span className="font-semibold">Teacher:</span> {match.dbLesson.teacherName || 'Unassigned'}</li>
+                                    <li><span className="font-semibold">Duration:</span> {match.dbLesson.duration} minutes</li>
+                                    <li><span className="font-semibold">Start Date:</span> {match.dbLesson.startDate || 'Not set'}</li>
+                                    <li><span className="font-semibold">Lesson ID:</span> {match.dbLesson.id}</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  <TabsContent value="missing-in-db" className="py-4">
+                    <h3 className="text-lg font-semibold mb-4">Lessons in Google Sheet but missing in Database</h3>
+                    {comparisonResults.missingInDb.length === 0 ? (
+                      <p className="text-green-600 flex items-center">
+                        <Check className="h-5 w-5 mr-2" /> No missing lessons found in database
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-4">
+                        {comparisonResults.missingInDb.map((lesson, idx) => (
+                          <Card key={idx} className="bg-red-50">
+                            <CardHeader className="py-3">
+                              <CardTitle className="text-lg">{lesson.studentName}</CardTitle>
+                              <CardDescription>{lesson.instrument}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="py-2">
+                              <ul className="space-y-1 text-sm">
+                                <li><span className="font-semibold">Teacher:</span> {lesson.teacher}</li>
+                                <li><span className="font-semibold">Duration:</span> {lesson.duration} minutes</li>
+                                <li><span className="font-semibold">Start Date:</span> {lesson.startDate}</li>
+                                {lesson.row && (
+                                  <li><span className="font-semibold">Sheet Row:</span> {lesson.row}</li>
+                                )}
+                              </ul>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  <TabsContent value="missing-in-sheet" className="py-4">
+                    <h3 className="text-lg font-semibold mb-4">Lessons in Database but missing in Google Sheet</h3>
+                    {comparisonResults.missingInSheet.length === 0 ? (
+                      <p className="text-green-600 flex items-center">
+                        <Check className="h-5 w-5 mr-2" /> No missing lessons found in Google Sheet
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-4">
+                        {comparisonResults.missingInSheet.map((lesson, idx) => (
+                          <Card key={idx} className="bg-yellow-50">
+                            <CardHeader className="py-3">
+                              <CardTitle className="text-lg">{lesson.studentName}</CardTitle>
+                              <CardDescription>{lesson.instrumentName}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="py-2">
+                              <ul className="space-y-1 text-sm">
+                                <li><span className="font-semibold">Teacher:</span> {lesson.teacherName || 'Unassigned'}</li>
+                                <li><span className="font-semibold">Duration:</span> {lesson.duration} minutes</li>
+                                <li><span className="font-semibold">Start Date:</span> {lesson.startDate || 'Not set'}</li>
+                                <li><span className="font-semibold">Lesson ID:</span> {lesson.id}</li>
+                              </ul>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  <TabsContent value="mismatched" className="py-4">
+                    <h3 className="text-lg font-semibold mb-4">Lessons with Discrepancies</h3>
+                    {comparisonResults.mismatched.length === 0 ? (
+                      <p className="text-green-600 flex items-center">
+                        <Check className="h-5 w-5 mr-2" /> No mismatched lessons found
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-6">
+                        {comparisonResults.mismatched.map((mismatch, idx) => (
+                          <Card key={idx} className="bg-orange-50">
+                            <CardHeader className="py-3">
+                              <CardTitle className="text-lg flex items-center">
+                                <AlertTriangle className="h-5 w-5 mr-2 text-orange-500" />
+                                {mismatch.dbLesson.studentName}
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="py-2">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <h4 className="font-semibold mb-2 text-blue-700">Database Version</h4>
+                                  <ul className="space-y-1 text-sm">
+                                    <li><span className="font-semibold">Teacher:</span> {mismatch.dbLesson.teacherName || 'Unassigned'}</li>
+                                    <li><span className="font-semibold">Duration:</span> {mismatch.dbLesson.duration} minutes</li>
+                                    <li><span className="font-semibold">Subject:</span> {mismatch.dbLesson.instrumentName}</li>
+                                    <li><span className="font-semibold">Start Date:</span> {mismatch.dbLesson.startDate || 'Not set'}</li>
+                                    <li><span className="font-semibold">Lesson ID:</span> {mismatch.dbLesson.id}</li>
+                                  </ul>
+                                </div>
+                                <div>
+                                  <h4 className="font-semibold mb-2 text-green-700">Google Sheet Version</h4>
+                                  <ul className="space-y-1 text-sm">
+                                    <li><span className="font-semibold">Teacher:</span> {mismatch.sheetLesson.teacher}</li>
+                                    <li><span className="font-semibold">Duration:</span> {mismatch.sheetLesson.duration} minutes</li>
+                                    <li><span className="font-semibold">Subject:</span> {mismatch.sheetLesson.instrument}</li>
+                                    <li><span className="font-semibold">Start Date:</span> {mismatch.sheetLesson.startDate}</li>
+                                    {mismatch.sheetLesson.row && (
+                                      <li><span className="font-semibold">Sheet Row:</span> {mismatch.sheetLesson.row}</li>
+                                    )}
+                                  </ul>
+                                </div>
+                              </div>
+                              
+                              <div className="mt-4 pt-3 border-t border-orange-200">
+                                <h4 className="font-semibold mb-2">Differences:</h4>
+                                <ul className="space-y-1">
+                                  {mismatch.differences.map((diff, index) => (
+                                    <li key={index} className="text-sm text-red-600 flex items-start">
+                                      <X className="h-4 w-4 mr-1 mt-0.5 flex-shrink-0" />
+                                      {diff}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                              
+                              <div className="mt-4 pt-3 border-t border-orange-200">
+                                {aligningStatus[mismatch.dbLesson.id]?.loading ? (
+                                  <div className="flex items-center text-blue-600">
+                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                    Checking for conflicts and aligning lesson...
+                                  </div>
+                                ) : aligningStatus[mismatch.dbLesson.id]?.error ? (
+                                  <Alert variant="destructive" className="mt-2">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <AlertDescription>{aligningStatus[mismatch.dbLesson.id].error}</AlertDescription>
+                                  </Alert>
+                                ) : aligningStatus[mismatch.dbLesson.id]?.conflict ? (
+                                  <Alert variant="destructive" className="mt-2">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <AlertDescription>
+                                      Cannot align: {aligningStatus[mismatch.dbLesson.id].conflictMessage}
+                                    </AlertDescription>
+                                  </Alert>
+                                ) : (
+                                  <div className="flex flex-col space-y-2">
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      className="w-full"
+                                      onClick={() => handleAlignWithSheet(mismatch.dbLesson, mismatch.sheetLesson)}
+                                    >
+                                      <Zap className="h-4 w-4 mr-2" />
+                                      Align with Google Sheet
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              )}
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default Settings; 
