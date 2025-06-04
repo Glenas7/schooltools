@@ -24,22 +24,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true); // Initial load is true
   const [profileFetchedForUserId, setProfileFetchedForUserId] = useState<string | null>(null);
+  const [isFetchingProfile, setIsFetchingProfile] = useState(false);
 
   const onAuthStateChangeHandlerRef = useRef<((_event: string, session: Session | null) => Promise<void>) | null>(null);
 
   useEffect(() => {
     onAuthStateChangeHandlerRef.current = async (_event, currentSession) => {
-      console.log("AuthContext: onAuthStateChange handler executing. Event:", _event, "Session ID:", currentSession?.user?.id, "Current User ID (state):", user?.id, "Profile for (state):", profileFetchedForUserId);
+      console.log("AuthContext: onAuthStateChange handler executing. Event:", _event, "Session ID:", currentSession?.user?.id, "Current User ID (state):", user?.id, "Profile for (state):", profileFetchedForUserId, "isFetchingProfile:", isFetchingProfile);
       setSession(currentSession);
 
       if (currentSession?.user) {
-        const shouldFetchProfile = currentSession.user.id !== profileFetchedForUserId || 
-                                 !user || 
-                                 _event === "SIGNED_IN" || 
-                                 (_event === "TOKEN_REFRESHED" && !user);
+        // Improved logic: Don't refetch profile for token refresh if we already have the user
+        const isNewUser = currentSession.user.id !== profileFetchedForUserId;
+        const isInitialSignIn = _event === "SIGNED_IN" && !user;
+        const isTokenRefreshWithoutUser = _event === "TOKEN_REFRESHED" && !user;
+        const isManualCheck = _event === "INITIAL_SESSION_MANUAL_CHECK";
+        
+        const shouldFetchProfile = isNewUser || isInitialSignIn || isTokenRefreshWithoutUser || isManualCheck;
 
-        if (shouldFetchProfile) {
-          console.log("AuthContext: Need to fetch profile. User ID:", currentSession.user.id, "Profile for current state:", profileFetchedForUserId, "User exists in state:", !!user, "Event:", _event);
+        // Prevent duplicate fetches
+        if (shouldFetchProfile && !isFetchingProfile) {
+          console.log("AuthContext: Need to fetch profile. User ID:", currentSession.user.id, "Profile for current state:", profileFetchedForUserId, "User exists in state:", !!user, "Event:", _event, "Reason:", isNewUser ? "new user" : isInitialSignIn ? "initial sign in" : isTokenRefreshWithoutUser ? "token refresh without user" : "manual check");
+          setIsFetchingProfile(true);
           setLoading(true);
           try {
             const { data: profile, error: profileError } = await supabase
@@ -54,9 +60,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setProfileFetchedForUserId(null);
             } else if (profile) {
               console.log("AuthContext: Profile fetched successfully:", profile);
-              setUser(profile as AppUserType);
-              setProfileFetchedForUserId(currentSession.user.id);
-              console.log("AuthContext: User state set with profile for ID:", currentSession.user.id);
+                setUser(profile as AppUserType);
+                setProfileFetchedForUserId(currentSession.user.id);
+                console.log("AuthContext: User state set with profile for ID:", currentSession.user.id);
             } else {
               console.warn('AuthContext: User profile not found for auth user:', currentSession.user.id);
               setUser(null);
@@ -68,20 +74,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setProfileFetchedForUserId(null);
           } finally {
             console.log("AuthContext: Profile fetch attempt finished. Setting loading to false.");
+            setIsFetchingProfile(false);
             setLoading(false);
           }
+        } else if (shouldFetchProfile && isFetchingProfile) {
+          console.log("AuthContext: Profile fetch already in progress, skipping duplicate fetch for event:", _event);
         } else {
-          console.log("AuthContext: Session event for user ID (", currentSession.user.id, "), profile already likely fetched and matches state. Current loading state:", loading);
-          if (loading) setLoading(false); // Ensure loading is false if it was somehow true
+          console.log("AuthContext: Session event for user ID (", currentSession.user.id, "), profile already fetched. Event:", _event, "- no profile refetch needed");
+          // For token refresh events where we already have the user, don't set loading to true
+          if (loading && (_event === "TOKEN_REFRESHED" || (_event === "SIGNED_IN" && user && currentSession.user.id === profileFetchedForUserId))) {
+            console.log("AuthContext: Token refresh event with existing user - ensuring loading is false");
+            setLoading(false);
+          }
         }
       } else { // No session or no user in session
         console.log("AuthContext: No session or user in session. Clearing user state and profile tracking.");
         setUser(null);
         setProfileFetchedForUserId(null);
+        setIsFetchingProfile(false);
         if (loading) setLoading(false); // Ensure loading is false if it was true
       }
     };
-  }, [user, profileFetchedForUserId, loading]); // Dependencies for the handler logic. `loading` is included to ensure `if (loading)` uses current value.
+  }, [user, profileFetchedForUserId, loading, isFetchingProfile]); // Dependencies for the handler logic.
 
   useEffect(() => {
     console.log("AuthContext: Subscribing to onAuthStateChange.");
@@ -92,13 +106,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     
     // Initial check in case onAuthStateChange doesn't fire immediately or for initial session
-    // This might be redundant if INITIAL_SESSION fires reliably and quickly.
-    // supabase.auth.getSession().then(({ data: { session } }) => {
-    //   if (onAuthStateChangeHandlerRef.current) {
-    //     console.log("AuthContext: Manually calling handler for initial session check.");
-    //     onAuthStateChangeHandlerRef.current('INITIAL_SESSION_MANUAL_CHECK', session);
-    //   }
-    // });
+    // This helps with faster initial session restoration on page refresh
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (onAuthStateChangeHandlerRef.current) {
+        console.log("AuthContext: Manually calling handler for initial session check.");
+        onAuthStateChangeHandlerRef.current('INITIAL_SESSION_MANUAL_CHECK', session);
+      }
+    });
 
 
     return () => {

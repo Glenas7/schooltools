@@ -37,36 +37,36 @@ const App = () => (
     <TooltipProvider>
       <AuthProvider>
         <SchoolsProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Routes>
               {/* Public routes without school context */}
-              <Route path="/" element={<MainLayout />}>
-                <Route index element={<Index />} />
-                <Route path="login" element={<Login />} />
+                  <Route path="/" element={<MainLayout />}>
+                    <Route index element={<Index />} />
+                    <Route path="login" element={<Login />} />
                 <Route path="signup" element={<Signup />} />
-                <Route path="forgot-password" element={<ForgotPassword />} />
-                <Route path="reset-password" element={<ResetPassword />} />
+                    <Route path="forgot-password" element={<ForgotPassword />} />
+                      <Route path="reset-password" element={<ResetPassword />} />
                 
                 {/* School management routes */}
-                <Route 
+                    <Route 
                   path="school-setup" 
-                  element={
-                    <RequireAuth>
+                      element={
+                        <RequireAuth>
                       <SchoolSetup />
-                    </RequireAuth>
-                  } 
-                />
-                <Route 
+                        </RequireAuth>
+                      } 
+                    />
+                    <Route 
                   path="school-select" 
-                  element={
+                      element={
                     <RequireAuth>
                       <SchoolSelect />
-                    </RequireAuth>
-                  } 
-                />
-              </Route>
+                        </RequireAuth>
+                      } 
+                    />
+                  </Route>
 
               {/* School-specific routes with school context */}
               <Route path="/school/:schoolId" element={
@@ -78,9 +78,9 @@ const App = () => (
                           <LessonsProvider>
                             <DragProvider>
                               <SchoolLayout />
-                            </DragProvider>
-                          </LessonsProvider>
-                        </TeachersProvider>
+              </DragProvider>
+            </LessonsProvider>
+          </TeachersProvider>
                       </SubjectsProvider>
                     </SchoolProvider>
                   </RequireSchoolAccess>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSchools } from '../../contexts/SchoolsContext';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ const LoginForm = () => {
   const { login, isAuthenticated, user } = useAuth();
   const { schools, fetchUserSchools } = useSchools();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,25 +46,38 @@ const LoginForm = () => {
     }
   }, [isAuthenticated, user, toast, fetchUserSchools]);
 
-  // Handle redirect logic based on schools
+  // Handle redirect logic based on schools - ONLY when on login page
   useEffect(() => {
+    console.log('[LoginForm] Redirect effect. Location:', location.pathname, 'isAuthenticated:', isAuthenticated, 'user:', !!user, 'schools.length:', schools.length);
+    
+    // Only handle redirects if we're actually on the login page
+    if (location.pathname !== '/login') {
+      console.log('[LoginForm] Not on login page, skipping redirect logic');
+      return;
+    }
+
     if (isAuthenticated && user && schools !== undefined) {
+      console.log('[LoginForm] User authenticated on login page, determining redirect...');
       if (schools.length === 0) {
         // User has no schools, redirect to school setup
+        console.log('[LoginForm] User has no schools, redirecting to school-setup');
         navigate('/school-setup', { replace: true });
       } else if (user.last_accessed_school_id && schools.find(s => s.id === user.last_accessed_school_id)) {
         // User has a last accessed school and it's still available, redirect there
+        console.log('[LoginForm] Redirecting to last accessed school:', user.last_accessed_school_id);
         navigate(`/school/${user.last_accessed_school_id}/schedule`, { replace: true });
       } else if (schools.length === 1) {
         // User has one school, go directly to that school
+        console.log('[LoginForm] User has one school, redirecting to:', schools[0].id);
         navigate(`/school/${schools[0].id}/schedule`, { replace: true });
       } else {
         // User has multiple schools and no valid last accessed school, let them choose
+        console.log('[LoginForm] User has multiple schools, redirecting to school-select');
         navigate('/school-select', { replace: true });
       }
       setIsLoading(false);
     }
-  }, [isAuthenticated, user, schools, navigate]);
+  }, [isAuthenticated, user, schools, navigate, location.pathname]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">

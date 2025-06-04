@@ -20,6 +20,7 @@ import { Lesson } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import { useStudentNames } from '@/hooks/useStudentNames';
 import { useSchool } from '../contexts/SchoolContext';
+import { useDrag } from '../contexts/DragContext';
 
 // Mock student names as a fallback, in case fetching fails
 const MOCK_STUDENT_NAMES = [
@@ -618,17 +619,18 @@ const findBestDayToShow = (lessons: Lesson[], userId: string, weekDates: Date[],
     return bestDayIndex;
   }
 
-  // 1. If currentDay is provided, check if it has lessons
+  // 1. PRIORITY: If currentDay is provided and has lessons, use it immediately
   if (currentDay !== null && currentDay >= 0 && currentDay < 5) {
     const hasLessonsOnCurrentDay = teacherLessons.some(l => l.day === currentDay);
     if (hasLessonsOnCurrentDay) {
-      console.log("Current day", currentDay, "has lessons, using it");
+      console.log("Current day", currentDay, "has lessons, using it as top priority");
       return currentDay;
     }
+    console.log("Current day", currentDay, "has no lessons, looking for other options");
   }
   
-  // 2. Try to find closest future day with lessons (starting from currentDay or 0)
-  const startDay = (currentDay !== null && currentDay >= 0 && currentDay < 5) ? currentDay : 0;
+  // 2. Find closest future day with lessons (starting from currentDay+1 or 0)
+  const startDay = (currentDay !== null && currentDay >= 0 && currentDay < 4) ? currentDay + 1 : 0;
   for (let i = startDay; i < 5; i++) {
     const hasLessons = teacherLessons.some(l => l.day === i);
     if (hasLessons) {
@@ -648,18 +650,7 @@ const findBestDayToShow = (lessons: Lesson[], userId: string, weekDates: Date[],
     }
   }
   
-  // 4. If we get here and no day found, look through all days from the beginning
-  if (currentDay !== null && currentDay > 0) {
-    for (let i = 0; i < currentDay; i++) {
-      const hasLessons = teacherLessons.some(l => l.day === i);
-      if (hasLessons) {
-        console.log("Found day with lessons from beginning:", i);
-        return i;
-      }
-    }
-  }
-  
-  // 5. Look for any day with lessons (this is a final sweep)
+  // 4. Look for any day with lessons (final sweep)
   for (let i = 0; i < 5; i++) {
     const hasLessons = teacherLessons.some(l => l.day === i);
     if (hasLessons) {
@@ -701,7 +692,7 @@ const checkFutureLessons = async (
   // Check if teacher has any FUTURE lessons in the current week
   const futureLessonsInCurrentWeek = teacherLessonsThisWeek.filter(l => {
     const lessonDate = currentViewingWeekDates[l.day]; // Get the actual date of the lesson
-    return isAfter(lessonDate, today); // Check if the lesson's date is after today
+    return isAfter(lessonDate, today) || isSameDay(lessonDate, today); // Include lessons today AND in the future
   });
   
   console.log(`Teacher has ${futureLessonsInCurrentWeek.length} FUTURE lessons this week (after ${today.toISOString().split('T')[0]}):`, 
@@ -797,6 +788,7 @@ const Schedule = () => {
   const { isSchoolAdmin } = useSchool();
   const { lessons, currentWeek, nextWeek, prevWeek, getWeekDates, setCurrentWeek, assignLesson, unassignLesson, rescheduleLesson, deleteLesson, fetchLessons } = useLessons();
   const { teachers, loading: teachersLoading } = useTeachers();
+  const { draggedLesson: globalDraggedLesson } = useDrag();
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
   const [editMode, setEditMode] = useState<boolean>(false);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
@@ -821,34 +813,94 @@ const Schedule = () => {
   
   // Effect for setting selectedTeacherId
   useEffect(() => {
-    if (teachersLoading) return;
+    console.log("[DEBUG] Teacher selection effect - teachersLoading:", teachersLoading, "teachers.length:", teachers.length, "selectedTeacherId:", selectedTeacherId, "user:", user?.id, "isSchoolAdmin:", isSchoolAdmin);
+    
+    if (teachersLoading) {
+      console.log("[DEBUG] Teacher selection effect - Still loading teachers, skipping");
+      return;
+    }
+    
+    console.log("[DEBUG] Teacher selection effect - Teachers loaded. Available teachers:", teachers.map(t => ({ id: t.id, name: t.name, active: t.active })));
+    
+    // For teachers (non-admin users), always set selectedTeacherId to their own ID
+    if (!isSchoolAdmin && user && user.id) {
+      console.log("[DEBUG] Teacher selection effect - User is a teacher (non-admin)");
+      if (selectedTeacherId !== user.id) {
+        console.log("[DEBUG] Teacher selection effect - Setting teacher's selectedTeacherId to their own ID:", user.id);
+        setSelectedTeacherId(user.id);
+      } else {
+        console.log("[DEBUG] Teacher selection effect - Teacher's selectedTeacherId already correct:", user.id);
+      }
+      return;
+    }
+    
+    // For school admins, use the normal teacher selection logic
+    console.log("[DEBUG] Teacher selection effect - User is admin, processing teacher selection logic");
     if (teachers.length > 0) {
       const currentTeacherIsValid = teachers.some(t => t.id === selectedTeacherId);
+      console.log("[DEBUG] Teacher selection effect - currentTeacherIsValid:", currentTeacherIsValid, "for selectedTeacherId:", selectedTeacherId);
+      
       if (!selectedTeacherId || !currentTeacherIsValid) {
+        console.log("[DEBUG] Teacher selection effect - Need to set new teacher ID");
         let newTeacherIdToSet = '';
+        
+        // Priority 1: If current user is a teacher, select them
         if (user && teachers.some(t => t.id === user.id)) {
           newTeacherIdToSet = user.id;
+          console.log("[DEBUG] Teacher selection effect - Admin is also a teacher, setting to user.id:", user.id);
         } else {
-    const firstActiveTeacher = teachers.find(t => t.active);
-          if (firstActiveTeacher) newTeacherIdToSet = firstActiveTeacher.id;
-          else if (teachers.length > 0) newTeacherIdToSet = teachers[0].id;
+          // Priority 2: First active teacher
+          const firstActiveTeacher = teachers.find(t => t.active);
+          if (firstActiveTeacher) {
+            newTeacherIdToSet = firstActiveTeacher.id;
+            console.log("[DEBUG] Teacher selection effect - Setting to first active teacher:", firstActiveTeacher.id, firstActiveTeacher.name);
+          } else if (teachers.length > 0) {
+            // Priority 3: Any teacher
+            newTeacherIdToSet = teachers[0].id;
+            console.log("[DEBUG] Teacher selection effect - No active teachers, setting to first teacher:", teachers[0].id, teachers[0].name);
+          }
         }
+        
         if (newTeacherIdToSet && selectedTeacherId !== newTeacherIdToSet) {
+          console.log("[DEBUG] Teacher selection effect - CHANGING selectedTeacherId from", selectedTeacherId, "to", newTeacherIdToSet);
           setSelectedTeacherId(newTeacherIdToSet);
+        } else {
+          console.log("[DEBUG] Teacher selection effect - No change needed or no valid teacher found");
         }
+      } else {
+        console.log("[DEBUG] Teacher selection effect - Current teacher selection is valid, no change needed");
       }
     } else {
-      if (selectedTeacherId !== '') setSelectedTeacherId('');
+      console.log("[DEBUG] Teacher selection effect - No teachers available");
+      if (selectedTeacherId !== '') {
+        console.log("[DEBUG] Teacher selection effect - Clearing selectedTeacherId due to no teachers");
+        setSelectedTeacherId('');
+      }
     }
-  }, [teachers, user, teachersLoading, selectedTeacherId]);
+  }, [teachers, user, teachersLoading, selectedTeacherId, isSchoolAdmin]);
   
   // Effect for fetching lessons
   useEffect(() => {
-    if (selectedTeacherId) fetchLessons(selectedTeacherId, currentWeek);
-    else if (user && user.id) {
+    console.log("[DEBUG] Lesson fetching effect triggered");
+    console.log("[DEBUG] - isSchoolAdmin:", isSchoolAdmin);
+    console.log("[DEBUG] - user:", user?.id);
+    console.log("[DEBUG] - selectedTeacherId:", selectedTeacherId);
+    console.log("[DEBUG] - currentWeek:", currentWeek.toISOString().split('T')[0]);
+    
+    if (!isSchoolAdmin && user && user.id) {
+      // For teachers, always fetch their own lessons using their user ID
+      console.log("[DEBUG] Fetching lessons for teacher (non-admin):", user.id);
       fetchLessons(user.id, currentWeek);
+    } else if (isSchoolAdmin && selectedTeacherId) {
+      // For admins, fetch lessons for the selected teacher
+      console.log("[DEBUG] Fetching lessons for admin's selected teacher:", selectedTeacherId);
+      fetchLessons(selectedTeacherId, currentWeek);
+    } else if (isSchoolAdmin && !selectedTeacherId) {
+      console.log("[DEBUG] Admin has no selected teacher - cannot fetch lessons");
+    } else {
+      console.log("[DEBUG] Lesson fetching conditions not met - skipping");
     }
-  }, [selectedTeacherId, currentWeek, fetchLessons, user]);
+  }, [selectedTeacherId, currentWeek, fetchLessons, user, isSchoolAdmin]);
   
   // New effect to check future weeks on initial load for teachers
   useEffect(() => {
@@ -1089,36 +1141,109 @@ const Schedule = () => {
     }
   };
   
-  const handleLessonDrop = (lessonId: string, day: number, time: string, slotDate: Date) => {
-    const lesson = lessons.find(l => l.id === lessonId);
+  const handleLessonDrop = (lessonId: string, day: number, time: string, slotDate: Date, sourceDate?: Date | null) => {
+    console.log("[DEBUG] handleLessonDrop - CALLED with:", {
+      lessonId,
+      day,
+      time,
+      slotDate,
+      sourceDate,
+      selectedTeacherId
+    });
     
-    if (!lesson) return;
+    console.log("[DEBUG] handleLessonDrop - lessons array length:", lessons.length);
+    console.log("[DEBUG] handleLessonDrop - lessons array sample:", lessons.slice(0, 3).map(l => ({
+      id: l.id,
+      student_name: l.student_name,
+      teacher_id: l.teacher_id
+    })));
+    
+    // If lessons array is empty, try to get lesson from global drag context
+    let lesson = lessons.find(l => l.id === lessonId);
+    
+    if (!lesson && lessons.length === 0) {
+      console.log("[DEBUG] handleLessonDrop - lessons not loaded, checking global drag context...");
+      // The globalDraggedLesson only has id and duration, not the full lesson data
+      // So we still can't proceed without the full lessons array
+      if (globalDraggedLesson && globalDraggedLesson.id === lessonId) {
+        console.log("[DEBUG] handleLessonDrop - lesson ID matches globalDraggedLesson but missing full lesson data");
+        console.log("[DEBUG] handleLessonDrop - need to wait for lessons array to load");
+        return; // Can't proceed without full lesson data
+      }
+    }
+    
+    console.log("[DEBUG] handleLessonDrop - found lesson:", lesson);
+    
+    if (!lesson) {
+      console.log("[DEBUG] handleLessonDrop - EARLY RETURN: lesson not found");
+      console.log("[DEBUG] handleLessonDrop - searching for lesson with ID:", lessonId);
+      console.log("[DEBUG] handleLessonDrop - all lesson IDs in array:", lessons.map(l => l.id));
+      console.log("[DEBUG] handleLessonDrop - globalDraggedLesson:", globalDraggedLesson);
+      return;
+    }
     
     // Ensure we have a valid teacher ID before proceeding
     const currentTeacherId = selectedTeacherId || null;
+    console.log("[DEBUG] handleLessonDrop - currentTeacherId:", currentTeacherId);
     
     if (lesson.teacher_id === null && lesson.day === null && lesson.start_time === null) {
+      console.log("[DEBUG] handleLessonDrop - CASE: Assign unassigned lesson");
       // Assign an unassigned lesson
       if (currentTeacherId) {
+        console.log("[DEBUG] handleLessonDrop - calling assignLesson with:", {
+          lessonId,
+          currentTeacherId,
+          day,
+          time,
+          slotDate
+        });
         assignLesson(lessonId, currentTeacherId, day, time, slotDate);
       } else {
-        console.error("Cannot assign lesson: No teacher selected");
+        console.error("[DEBUG] handleLessonDrop - ERROR: Cannot assign lesson: No teacher selected");
       }
     } 
     else if (lesson.teacher_id) {
-      // Get the actual date this lesson is dragged from
-      const originalDate = lesson.day !== null ? weekDates[lesson.day] : currentWeek;
+      console.log("[DEBUG] handleLessonDrop - CASE: Reschedule existing lesson");
+      
+      // Calculate the original date to use
+      let originalDate: Date;
+      if (sourceDate) {
+        // If we have the source date from the drag operation, use it (most accurate)
+        originalDate = sourceDate;
+        console.log("[DEBUG] handleLessonDrop - using sourceDate from drag:", originalDate);
+      } else {
+        // Fallback to the old logic when sourceDate is not available
+        originalDate = lesson.day !== null ? weekDates[lesson.day] : currentWeek;
+        console.log("[DEBUG] handleLessonDrop - using fallback originalDate:", originalDate);
+      }
       
       // Reschedule an existing lesson using the specific date it was dragged from
       // Ensure we're always passing a valid teacher ID
+      console.log("[DEBUG] handleLessonDrop - calling rescheduleLesson with:", {
+        lessonId,
+        originalDate,
+        currentTeacherId,
+        day,
+        time,
+        slotDate
+      });
+      
+      // Add timestamp to track timing of calls
+      console.log("[DEBUG] handleLessonDrop - rescheduleLesson call timestamp:", new Date().toISOString());
+      
       rescheduleLesson(
         lessonId, 
-        originalDate, // originalSlotDate - use the actual date of the lesson, not just Monday
+        originalDate, // originalSlotDate - use the actual date where the lesson was dragged from
         currentTeacherId, // Use the stored value to prevent undefined
         day, 
         time, 
         slotDate // targetSlotDate - the date where it's being dropped
       );
+    } else {
+      console.log("[DEBUG] handleLessonDrop - CASE: Unhandled case - lesson has no teacher_id and is not fully unassigned");
+      console.log("[DEBUG] handleLessonDrop - lesson.teacher_id:", lesson.teacher_id);
+      console.log("[DEBUG] handleLessonDrop - lesson.day:", lesson.day);
+      console.log("[DEBUG] handleLessonDrop - lesson.start_time:", lesson.start_time);
     }
   };
   
@@ -1163,7 +1288,7 @@ const Schedule = () => {
   };
   
   const handleLessonClick = (lessonId: string) => {
-    if (editMode && user) {
+    if (editMode && isSchoolAdmin) {
       setSelectedLessonId(lessonId);
       setIsEditModalOpen(true);
     }
@@ -1184,12 +1309,12 @@ const Schedule = () => {
       <div className="mb-4">
         {/* Title section - Always visible */}
         <div className="mb-2">
-          {!user && selectedTeacherName ? (
+          {!isSchoolAdmin && selectedTeacherName ? (
             <h1 className="text-2xl font-bold">Weekly schedule for {selectedTeacherName}</h1>
           ) : (
             <h1 className="text-2xl font-bold">Weekly Schedule</h1>
           )}
-          {(!isMobileView || user) && (
+          {(!isMobileView || isSchoolAdmin) && (
             <p className="text-gray-500">
               {format(weekDates[0], 'MMMM d')} - {format(weekDates[4], 'MMMM d, yyyy')}
             </p>
@@ -1222,44 +1347,46 @@ const Schedule = () => {
               onClick={handleNextWeek}
               className={isMobileView ? 'flex-1' : ''}
             >
+              <ChevronRight className="h-4 w-4 mr-1" />
               Next Week
-              <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           </div>
         </div>
       </div>
       
-      {user && (
-        <div className="flex justify-between items-center mb-2">
-        <TeacherSelector 
-          selectedTeacherId={selectedTeacherId} 
-            onTeacherChange={setSelectedTeacherId} 
-          />
-          
-          <div className="flex space-x-1 rounded-md overflow-hidden">
-            <Button 
-              variant={!editMode ? "default" : "outline"} 
-              size="sm"
-              onClick={() => setEditMode(false)}
-              className="rounded-r-none"
-            >
-              <Move className="h-4 w-4 mr-2" />
-              Drag Mode
-            </Button>
-            <Button 
-              variant={editMode ? "default" : "outline"} 
-              size="sm"
-              onClick={() => setEditMode(true)}
-              className="rounded-l-none"
-            >
-              <Edit className="h-4 w-4 mr-2" />
-              Edit Mode
-            </Button>
+      {/* Admin-only controls */}
+      {isSchoolAdmin && (
+        <div className="mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between space-y-2 sm:space-y-0">
+            <TeacherSelector 
+              selectedTeacherId={selectedTeacherId}
+              onTeacherChange={setSelectedTeacherId}
+            />
+            <div className="flex space-x-2">
+              <Button 
+                variant={!editMode ? "default" : "outline"} 
+                size="sm"
+                onClick={() => setEditMode(false)}
+                className="rounded-r-none"
+              >
+                <Move className="h-4 w-4 mr-2" />
+                Drag Mode
+              </Button>
+              <Button 
+                variant={editMode ? "default" : "outline"} 
+                size="sm"
+                onClick={() => setEditMode(true)}
+                className="rounded-l-none"
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Mode
+              </Button>
+            </div>
           </div>
         </div>
       )}
       
-      {isMobileView && !user && weekDates.length === 5 && (
+      {isMobileView && !isSchoolAdmin && weekDates.length === 5 && (
         <div className="flex items-center justify-between mb-2 p-2 border rounded-md">
           {/* Left chevron - invisible when disabled but keeps space */}
           <div className="w-10 h-10 flex items-center justify-center">
@@ -1286,7 +1413,7 @@ const Schedule = () => {
         </div>
       )}
       
-      {user && (
+      {isSchoolAdmin && (
         <SelectedTeacherContext.Provider value={selectedTeacherId}>
           <NewLessonForm />
         </SelectedTeacherContext.Provider>
@@ -1300,7 +1427,7 @@ const Schedule = () => {
             selectedTeacherId={selectedTeacherId}
             onLessonDrop={handleLessonDrop}
             onLessonClick={handleLessonClick}
-            isAdmin={!!user}
+            isAdmin={isSchoolAdmin}
             editMode={editMode}
             startHour={timeRange.startHour}
             startMinute={timeRange.startMinute}
@@ -1311,8 +1438,8 @@ const Schedule = () => {
           />
         </div>
         
-        {user && (
-          <div className="w-100 flex self-stretch">
+        {isSchoolAdmin && (
+          <div className="w-100 flex self-stretch sticky top-0">
             <UnassignedLessons 
               lessons={lessons}
               onTrashDrop={handleLessonDelete}

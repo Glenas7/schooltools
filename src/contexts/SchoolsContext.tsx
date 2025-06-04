@@ -23,7 +23,10 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const { user, isAuthenticated } = useAuth();
 
   const fetchUserSchools = useCallback(async () => {
+    console.log('[SchoolsContext] fetchUserSchools called. isAuthenticated:', isAuthenticated, 'user:', user?.id);
+    
     if (!isAuthenticated || !user) {
+      console.log('[SchoolsContext] Not authenticated or no user, setting empty schools');
       setSchools([]);
       return;
     }
@@ -32,39 +35,54 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setError(null);
 
     try {
-      // Fetch schools the user has access to with their role
-      const { data, error: fetchError } = await supabase
+      console.log('[SchoolsContext] Fetching user_schools for user:', user.id);
+      
+      // First, get the user's school relationships
+      const { data: userSchoolsData, error: userSchoolsError } = await supabase
         .from('user_schools')
-        .select(`
-          role,
-          schools (
-            id,
-            name,
-            description,
-            google_sheet_url,
-            join_code,
-            settings,
-            active,
-            created_at,
-            updated_at
-          )
-        `)
+        .select('school_id, role')
         .eq('user_id', user.id)
-        .eq('active', true)
-        .eq('schools.active', true);
+        .eq('active', true);
 
-      if (fetchError) throw fetchError;
+      if (userSchoolsError) throw userSchoolsError;
 
-      // Map the data to include the user's role
-      const schoolsWithRoles: SchoolWithRole[] = data?.filter(item => item.schools).map(item => ({
-        ...(item.schools as any),
-        userRole: item.role as UserRole
-      })) || [];
+      console.log('[SchoolsContext] user_schools query result:', userSchoolsData?.length || 0, 'relationships');
 
+      if (!userSchoolsData || userSchoolsData.length === 0) {
+        console.log('[SchoolsContext] No school relationships found, setting empty schools');
+        setSchools([]);
+        setLoading(false);
+        return;
+      }
+
+      // Then get the school details separately
+      const schoolIds = userSchoolsData.map(us => us.school_id);
+      console.log('[SchoolsContext] Fetching school details for IDs:', schoolIds);
+      
+      const { data: schoolsData, error: schoolsError } = await supabase
+        .from('schools')
+        .select('id, name, description, google_sheet_url, join_code, settings, active, created_at, updated_at')
+        .in('id', schoolIds)
+        .eq('active', true);
+
+      if (schoolsError) throw schoolsError;
+
+      console.log('[SchoolsContext] Schools query result:', schoolsData?.length || 0, 'schools');
+
+      // Combine the data
+      const schoolsWithRoles: SchoolWithRole[] = (schoolsData || []).map(school => {
+        const userSchool = userSchoolsData.find(us => us.school_id === school.id);
+        return {
+          ...school,
+          userRole: userSchool?.role as UserRole
+        };
+      });
+
+      console.log('[SchoolsContext] Final schools with roles:', schoolsWithRoles.length, 'schools');
       setSchools(schoolsWithRoles);
     } catch (e) {
+      console.error('[SchoolsContext] Error fetching schools:', e);
       setError(e as Error);
-      console.error('Error fetching schools:', e);
       setSchools([]);
     } finally {
       setLoading(false);
@@ -96,63 +114,6 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .select()
         .single();
 
-      // Handle potential caching issues - if we get an RLS error but the school was actually created
-      if (createError && createError.code === '42501') {
-        // RLS error - but check if the school was actually created
-        console.warn('RLS error reported, checking if school was actually created...');
-        
-        // Wait a moment for potential cache refresh
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Try to find a recently created school with this name
-        const { data: recentSchools, error: checkError } = await supabase
-          .from('schools')
-          .select('*')
-          .eq('name', schoolData.name)
-          .eq('active', true)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (!checkError && recentSchools && recentSchools.length > 0) {
-          const recentSchool = recentSchools[0] as School;
-          
-          // Check if this school was created in the last minute (likely our school)
-          const schoolCreatedAt = new Date(recentSchool.created_at);
-          const oneMinuteAgo = new Date(Date.now() - 60000);
-          
-          if (schoolCreatedAt > oneMinuteAgo) {
-            console.log('School was actually created successfully despite RLS error');
-            
-            // Add the creator as a superadmin of the school
-            console.log('About to create user_schools entry with role: superadmin for school:', recentSchool.id);
-            const { error: userSchoolError } = await supabase
-              .from('user_schools')
-              .insert({
-                user_id: user.id,
-                school_id: recentSchool.id,
-                role: 'superadmin',
-                active: true
-              });
-
-            if (userSchoolError) {
-              console.warn('User school creation error:', userSchoolError);
-              // Don't throw here - the school was created successfully
-            } else {
-              console.log('User school entry created successfully');
-            }
-            
-            // Refresh the schools list to include the new school
-            await fetchUserSchools();
-            
-            setLoading(false);
-            return recentSchool;
-          }
-        }
-        
-        // If we get here, the school really wasn't created
-        throw createError;
-      }
-
       if (createError) throw createError;
 
       const newSchool = data as School;
@@ -170,7 +131,7 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       if (userSchoolError) throw userSchoolError;
       
-      console.log('User school entry created successfully in normal path');
+      console.log('User school entry created successfully');
       
       // Refresh the schools list to include the new school
       await fetchUserSchools();

@@ -59,7 +59,7 @@ serve(async (req: Request) => {
   // Mock student names as fallback
   const mockStudentNames = [
     "Alice Smith",
-    "Bob Johnson", 
+    "Bob Johnson",
     "Charlie Williams",
     "David Brown",
     "Eva Jones",

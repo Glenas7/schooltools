@@ -48,17 +48,25 @@ const Teachers = () => {
   };
   
   const handleToggleActive = async (teacherId: string) => {
+    console.log("[DEBUG Teachers] handleToggleActive called with teacherId:", teacherId);
     const teacherBeforeToggle = teachers.find(t => t.id === teacherId);
+    console.log("[DEBUG Teachers] Teacher before toggle:", teacherBeforeToggle);
     if (!teacherBeforeToggle) return;
 
+    const newActiveStatus = !teacherBeforeToggle.active;
+    console.log("[DEBUG Teachers] Will set active status to:", newActiveStatus);
+
     try {
-      await toggleTeacherActive(teacherId);
+      console.log("[DEBUG Teachers] Calling toggleTeacherActive with:", { teacherId, active: newActiveStatus });
+      await toggleTeacherActive(teacherId, newActiveStatus);
       
+      console.log("[DEBUG Teachers] toggleTeacherActive completed successfully");
       toast({
-        title: `Teacher ${!teacherBeforeToggle.active ? 'activated' : 'deactivated'}`,
-        description: `${teacherBeforeToggle.name} has been ${!teacherBeforeToggle.active ? 'activated' : 'deactivated'}.`,
+        title: `Teacher ${newActiveStatus ? 'activated' : 'deactivated'}`,
+        description: `${teacherBeforeToggle.name} has been ${newActiveStatus ? 'activated' : 'deactivated'}.`,
       });
     } catch (error) {
+      console.error("[DEBUG Teachers] Error in handleToggleActive:", error);
       toast({
         title: "Error",
         description: "Failed to update teacher status. Please try again.",

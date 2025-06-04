@@ -7,7 +7,7 @@ type CreateUserRequest = {
   email: string;
   name: string;
   school_id: string;
-  role: 'admin' | 'teacher';
+  role: 'admin' | 'teacher' | 'superadmin';
   subject_ids?: string[];
 };
 
@@ -141,71 +141,225 @@ serve(async (req: Request) => {
       );
     }
 
-    console.log('[Edge Function] Creating new user with auth.admin.createUser...');
-    // Create the user using service role
-    const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
-      email: userData.email,
-      email_confirm: true,
-      user_metadata: {
-        name: userData.name
+    // Additional permission check: Role-based user creation restrictions
+    if (userData.role === 'admin' || userData.role === 'superadmin') {
+      if (userSchool.role === 'admin') {
+        // Admins can only create other admin users, not superadmins
+        if (userData.role === 'superadmin') {
+          console.error('[Edge Function] Admin cannot create superadmin users:', {
+            requestingUserRole: userSchool.role,
+            targetRole: userData.role
+          });
+          return new Response(
+            JSON.stringify({ error: 'Admin users cannot create super admin users' }),
+            { headers, status: 403 }
+          );
+        }
+      } else if (userSchool.role !== 'superadmin') {
+        // Non-admin/non-superadmin users cannot create admin or superadmin users
+        console.error('[Edge Function] Super admin access required for creating admin users:', {
+          requestingUserRole: userSchool.role,
+          targetRole: userData.role
+        });
+        return new Response(
+          JSON.stringify({ error: 'Admin access required to create admin users' }),
+          { headers, status: 403 }
+        );
       }
-    });
-
-    console.log('[Edge Function] User creation result:', { newUser: !!newUser, createError });
-
-    if (createError) {
-      console.error('[Edge Function] User creation failed:', createError);
-      throw new Error(`Failed to create user: ${createError.message}`);
     }
 
-    if (!newUser.user) {
-      console.error('[Edge Function] User creation failed - no user returned');
-      throw new Error('User creation failed - no user returned');
-    }
+    console.log('[Edge Function] Permission check passed. User can create role:', userData.role);
 
-    console.log('[Edge Function] User created successfully:', newUser.user.id);
-
-    // Insert into users table
-    console.log('[Edge Function] Inserting user into users table...');
-    const { error: userInsertError } = await supabase
+    // Check if user already exists by email
+    console.log('[Edge Function] Checking if user already exists:', userData.email);
+    const { data: existingUsers, error: existingUserError } = await supabase
       .from('users')
-      .insert({
-        id: newUser.user.id,
-        name: userData.name,
-        email: userData.email,
-        active: true
-      });
+      .select('id, email, name, active')
+      .eq('email', userData.email)
+      .limit(1);
 
-    if (userInsertError) {
-      console.error('[Edge Function] Error inserting user:', userInsertError);
-      throw new Error(`Failed to create user profile: ${userInsertError.message}`);
+    console.log('[Edge Function] Existing user check result:', { existingUsers, existingUserError });
+
+    let userId: string;
+    let isNewUser = false;
+    let membershipHandled = false; // Track if we already handled membership (reactivation)
+
+    if (existingUserError) {
+      console.error('[Edge Function] Error checking for existing user:', existingUserError);
+      throw new Error(`Failed to check for existing user: ${existingUserError.message}`);
     }
 
-    console.log('[Edge Function] User profile created successfully');
+    if (existingUsers && existingUsers.length > 0) {
+      // User already exists
+      const existingUser = existingUsers[0];
+      console.log('[Edge Function] User already exists:', existingUser.id);
+      
+      if (!existingUser.active) {
+        console.error('[Edge Function] Cannot add inactive user to school');
+        return new Response(
+          JSON.stringify({ error: 'Cannot add inactive user to school' }),
+          { headers, status: 400 }
+        );
+      }
 
-    // Add user to school
-    console.log('[Edge Function] Adding user to school...');
-    const { error: userSchoolInsertError } = await supabase
-      .from('user_schools')
-      .insert({
-        user_id: newUser.user.id,
-        school_id: userData.school_id,
-        role: userData.role,
-        active: true
-      });
+      // Check if user is already a member of this school
+      const { data: existingMembership, error: membershipError } = await supabase
+        .from('user_schools')
+        .select('role, active')
+        .eq('user_id', existingUser.id)
+        .eq('school_id', userData.school_id)
+        .limit(1);
 
-    if (userSchoolInsertError) {
-      console.error('[Edge Function] Error adding user to school:', userSchoolInsertError);
-      throw new Error(`Failed to add user to school: ${userSchoolInsertError.message}`);
+      if (membershipError) {
+        console.error('[Edge Function] Error checking existing membership:', membershipError);
+        throw new Error(`Failed to check existing membership: ${membershipError.message}`);
+      }
+
+      if (existingMembership && existingMembership.length > 0) {
+        const membership = existingMembership[0];
+        if (membership.active) {
+          console.error('[Edge Function] User is already an active member of this school');
+          return new Response(
+            JSON.stringify({ error: `User is already a ${membership.role} in this school` }),
+            { headers, status: 409 }
+          );
+        } else {
+          // Reactivate inactive membership with new role
+          console.log('[Edge Function] Reactivating inactive membership with new role');
+          const { error: updateError } = await supabase
+            .from('user_schools')
+            .update({ role: userData.role, active: true })
+            .eq('user_id', existingUser.id)
+            .eq('school_id', userData.school_id);
+
+          if (updateError) {
+            console.error('[Edge Function] Error reactivating membership:', updateError);
+            throw new Error(`Failed to reactivate membership: ${updateError.message}`);
+          }
+
+          userId = existingUser.id;
+          membershipHandled = true; // We already handled the membership
+        }
+      } else {
+        // User exists but not in this school - we'll add them below
+        userId = existingUser.id;
+      }
+    } else {
+      // User doesn't exist, create new user
+      isNewUser = true;
+      console.log('[Edge Function] Creating new user with auth.admin.createUser...');
+      
+      try {
+        const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+          email: userData.email,
+          email_confirm: true,
+          user_metadata: {
+            name: userData.name
+          }
+        });
+
+        console.log('[Edge Function] User creation result:', { newUser: !!newUser, createError });
+
+        if (createError) {
+          // Check if the error is because user already exists in auth but not in our users table
+          if (createError.message && createError.message.includes('already exists')) {
+            console.log('[Edge Function] User exists in auth but not in users table, fetching auth user...');
+            
+            // Get the user from auth
+            const { data: authUsers, error: authUserError } = await supabase.auth.admin.listUsers();
+            if (authUserError) {
+              console.error('[Edge Function] Error fetching auth users:', authUserError);
+              throw new Error(`Failed to fetch auth users: ${authUserError.message}`);
+            }
+            
+            const authUser = authUsers.users.find(u => u.email === userData.email);
+            if (!authUser) {
+              console.error('[Edge Function] Could not find auth user despite existing error');
+              throw new Error('User creation failed - inconsistent auth state');
+            }
+            
+            console.log('[Edge Function] Found auth user:', authUser.id);
+            userId = authUser.id;
+            
+            // Insert into users table since they exist in auth but not in our table
+            console.log('[Edge Function] Inserting auth user into users table...');
+            const { error: userInsertError } = await supabase
+              .from('users')
+              .insert({
+                id: authUser.id,
+                name: userData.name,
+                email: userData.email,
+                active: true
+              });
+
+            if (userInsertError) {
+              console.error('[Edge Function] Error inserting auth user:', userInsertError);
+              throw new Error(`Failed to create user profile: ${userInsertError.message}`);
+            }
+
+            console.log('[Edge Function] Auth user profile created successfully');
+          } else {
+            console.error('[Edge Function] User creation failed:', createError);
+            throw new Error(`Failed to create user: ${createError.message}`);
+          }
+        } else {
+          if (!newUser.user) {
+            console.error('[Edge Function] User creation failed - no user returned');
+            throw new Error('User creation failed - no user returned');
+          }
+
+          console.log('[Edge Function] User created successfully:', newUser.user.id);
+          userId = newUser.user.id;
+
+          // Insert into users table for new users only
+          console.log('[Edge Function] Inserting user into users table...');
+          const { error: userInsertError } = await supabase
+            .from('users')
+            .insert({
+              id: newUser.user.id,
+              name: userData.name,
+              email: userData.email,
+              active: true
+            });
+
+          if (userInsertError) {
+            console.error('[Edge Function] Error inserting user:', userInsertError);
+            throw new Error(`Failed to create user profile: ${userInsertError.message}`);
+          }
+
+          console.log('[Edge Function] User profile created successfully');
+        }
+      } catch (authError) {
+        console.error('[Edge Function] Exception during user creation:', authError);
+        throw authError;
+      }
     }
 
-    console.log('[Edge Function] User added to school successfully');
+    // Add user to school (only if membership wasn't already handled via reactivation)
+    if (!membershipHandled) {
+      console.log('[Edge Function] Adding user to school...');
+      const { error: userSchoolInsertError } = await supabase
+        .from('user_schools')
+        .insert({
+          user_id: userId,
+          school_id: userData.school_id,
+          role: userData.role,
+          active: true
+        });
+
+      if (userSchoolInsertError) {
+        console.error('[Edge Function] Error adding user to school:', userSchoolInsertError);
+        throw new Error(`Failed to add user to school: ${userSchoolInsertError.message}`);
+      }
+
+      console.log('[Edge Function] User added to school successfully');
+    }
 
     // If this is a teacher and subject_ids are provided, add subject assignments
     if (userData.role === 'teacher' && userData.subject_ids && userData.subject_ids.length > 0) {
       console.log('[Edge Function] Adding subject assignments:', userData.subject_ids);
       const subjectAssignments = userData.subject_ids.map(subjectId => ({
-        teacher_id: newUser.user.id,
+        teacher_id: userId,
         subject_id: subjectId,
         school_id: userData.school_id
       }));
@@ -224,8 +378,8 @@ serve(async (req: Request) => {
 
     // Return the created user data
     const responseData = {
-      id: newUser.user.id,
-      name: userData.name,
+      id: userId,
+      name: isNewUser ? userData.name : (existingUsers?.[0]?.name || userData.name),
       email: userData.email,
       active: true,
       role: userData.role,

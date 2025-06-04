@@ -31,9 +31,14 @@ const LessonsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [error, setError] = useState<Error | null>(null);
   const { currentSchool, userRole, isSchoolAdmin } = useSchool();
 
-  const fetchLessons = useCallback(async (forTeacherId?: string | null, targetDate?: Date, returnOnly?: boolean) => {
+  const fetchLessons = useCallback(async (forTeacherId?: string | null, targetDate?: Date, returnOnly?: boolean): Promise<Lesson[]> => {
+    console.log('[LessonsContext] fetchLessons called:', { forTeacherId, targetDate: targetDate?.toISOString(), returnOnly, currentSchool: currentSchool?.name, userRole, isSchoolAdmin });
+    
     if (!currentSchool) {
-      if (!returnOnly) setLessons([]);
+      console.log('[LessonsContext] No current school, returning empty array');
+      if (!returnOnly) {
+        setLessons([]);
+      }
       return [];
     }
 
@@ -51,28 +56,50 @@ const LessonsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
     try {
       let query = supabase.from('lessons').select('*').eq('school_id', currentSchool.id);
+      console.log('[LessonsContext] Base query set for school:', currentSchool.id);
       
       // Handle teacher vs admin permissions and filtering
       if (!isSchoolAdmin && userRole === 'teacher') {
+        console.log('[DEBUG LessonsContext] Teacher query branch - applying teacher-specific filters');
         // Teachers can only see their own lessons in this school
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          query = query.eq('teacher_id', user.id);
+        if (forTeacherId) {
+          // When a specific teacher ID is passed (from Schedule component)
+          console.log('[DEBUG LessonsContext] Using passed teacher ID:', forTeacherId);
+          query = query.eq('teacher_id', forTeacherId);
+        } else {
+          // When no teacher ID is passed, get current authenticated user
+          console.log('[DEBUG LessonsContext] No teacher ID passed, getting auth user');
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            console.log('[DEBUG LessonsContext] Using auth user ID:', user.id);
+            query = query.eq('teacher_id', user.id);
+          } else {
+            console.log('[DEBUG LessonsContext] No auth user found');
+          }
         }
       } else if (isSchoolAdmin) {
+        console.log('[DEBUG LessonsContext] Admin query branch - applying admin-specific filters');
+        console.log('[DEBUG LessonsContext] - forTeacherId parameter:', forTeacherId, typeof forTeacherId);
+        
         // School admins have different filtering based on the request
         if (typeof forTeacherId === 'string') {
           // Admin wants to see a specific teacher's lessons + unassigned
+          console.log('[DEBUG LessonsContext] Admin requesting specific teacher lessons + unassigned');
           query = query.or(`teacher_id.eq.${forTeacherId},teacher_id.is.null`);
         } else if (forTeacherId === null) {
           // Admin wants to see only unassigned lessons
+          console.log('[DEBUG LessonsContext] Admin requesting only unassigned lessons');
           query = query.is('teacher_id', null);
         } else {
           // No specific teacher requested (default case)
+          console.log('[DEBUG LessonsContext] Admin default case - fetching unassigned lessons');
           // Just fetch unassigned lessons as a starting point
           query = query.is('teacher_id', null);
         }
       } else {
+        console.log('[DEBUG LessonsContext] No valid role branch - returning empty array');
+        console.log('[DEBUG LessonsContext] - isSchoolAdmin:', isSchoolAdmin);
+        console.log('[DEBUG LessonsContext] - userRole:', userRole);
         // No valid role, return empty array
         if (!returnOnly) {
           setLessons([]);
@@ -88,8 +115,19 @@ const LessonsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) 
       query = query.order('start_date', { ascending: true, nullsFirst: true })
                    .order('start_time', { ascending: true });
 
+      console.log('[LessonsContext] About to execute query with filters applied');
+      console.log('[LessonsContext] Query constructed for school_id:', currentSchool.id, 'teacher_id condition:', typeof forTeacherId === 'string' ? forTeacherId : 'auth user or null');
+
       const { data, error: fetchError } = await query;
-      if (fetchError) throw fetchError;
+      
+      console.log('[LessonsContext] Query execution completed. Error:', fetchError, 'Data received:', !!data);
+      if (fetchError) {
+        console.error('[LessonsContext] Query error details:', fetchError);
+        throw fetchError;
+      }
+      
+      console.log('[LessonsContext] Query executed successfully. Raw data length:', data?.length || 0);
+      console.log('[LessonsContext] Raw data sample:', data?.slice(0, 2));
       
       // Map DB fields to our front-end format
       const mappedLessons = data?.map(lesson => ({
@@ -114,20 +152,35 @@ const LessonsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) 
                  `Week: ${weekStart} to ${weekEnd}`,
                  returnOnly ? '(return only)' : '');
       
+      console.log('[LessonsContext] Mapped lessons sample:', mappedLessons.slice(0, 2));
+      
       // If returnOnly is true, just return the mapped lessons without setting state
       if (returnOnly) {
         setLoading(false);
+        console.log('[LessonsContext] Returning only, not setting state');
         return mappedLessons;
       }
       
       // Only set lessons if there's meaningful data to set or we actually want to clear it
       if (mappedLessons.length > 0 || forTeacherId !== undefined) {
+        console.log('[LessonsContext] Setting lessons state with count:', mappedLessons.length);
         setLessons(mappedLessons);
+      } else {
+        console.log('[LessonsContext] Not setting lessons state - no meaningful data and no specific teacher requested');
       }
       
       setLoading(false);
       return mappedLessons;
     } catch (e) {
+      console.error('[LessonsContext] Exception caught in fetchLessons:', e);
+      console.error('[LessonsContext] Exception details:', {
+        message: (e as Error).message,
+        stack: (e as Error).stack,
+        forTeacherId,
+        currentSchool: currentSchool?.name,
+        userRole,
+        isSchoolAdmin
+      });
       setError(e as Error);
       console.error("Error fetching lessons:", e);
       if (!returnOnly) {
@@ -145,13 +198,13 @@ const LessonsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) 
       return;
     }
     
-    if (!isSchoolAdmin && userRole === 'teacher') { 
-      // Teachers only fetch their own lessons
-      fetchLessons(undefined, currentWeek); 
-    }
-    // For school admins, we don't fetch anything here by default
-    // Schedule.tsx will trigger its own fetch with the selected teacher
-  }, [currentSchool, userRole, isSchoolAdmin, currentWeek, fetchLessons]);
+    // Only clear lessons when school changes, don't auto-fetch for teachers
+    // The Schedule component will handle fetching the appropriate teacher's lessons
+    console.log('[LessonsContext] School context changed, clearing lessons. Let Schedule component handle teacher lesson fetching.');
+    
+    // Don't auto-fetch lessons here - let the Schedule component determine what to fetch
+    // This prevents the undefined forTeacherId issue
+  }, [currentSchool, currentWeek]);
 
   const createLesson = async (lessonData: LessonUnsaved, currentlySelectedTeacherId?: string): Promise<Lesson | null> => {
     if (!isSchoolAdmin || !currentSchool) { 

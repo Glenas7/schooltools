@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save } from 'lucide-react';
+import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save, Calendar } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
@@ -14,10 +14,11 @@ import { compareLessons, ComparisonResult, SheetLesson, DbLesson, wouldCauseConf
 import { useToast } from '@/hooks/use-toast';
 import { useSchool } from '../contexts/SchoolContext';
 import { supabase } from '../lib/supabaseClient';
+import AdminUserManagement from '../components/settings/AdminUserManagement';
 
 const Settings = () => {
   const { user } = useAuth();
-  const { isSchoolAdmin, currentSchool, refreshSchool } = useSchool();
+  const { isSchoolAdmin, currentSchool, refreshSchool, userRole } = useSchool();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,13 @@ const Settings = () => {
   const [lessonsGoogleSheetRange, setLessonsGoogleSheetRange] = useState(currentSchool?.google_sheet_lessons_range || 'A1:E1000');
   const [isSavingLessonsSheetUrl, setIsSavingLessonsSheetUrl] = useState(false);
 
+  // School year end date state
+  const [schoolYearEndDate, setSchoolYearEndDate] = useState(currentSchool?.school_year_end_date || '');
+  const [isSavingSchoolYear, setIsSavingSchoolYear] = useState(false);
+  const [isUpdatingLessonEndDates, setIsUpdatingLessonEndDates] = useState(false);
+  const [lessonsWithoutEndDateCount, setLessonsWithoutEndDateCount] = useState<number | null>(null);
+  const [isFetchingLessonCount, setIsFetchingLessonCount] = useState(false);
+
   // Sync google sheet state when currentSchool changes
   useEffect(() => {
     setGoogleSheetUrl(currentSchool?.google_sheet_url || '');
@@ -46,19 +54,50 @@ const Settings = () => {
     setLessonsGoogleSheetUrl(currentSchool?.google_sheet_lessons_url || '');
     setLessonsGoogleSheetName(currentSchool?.google_sheet_lessons_name || 'lessons');
     setLessonsGoogleSheetRange(currentSchool?.google_sheet_lessons_range || 'A1:E1000');
+    
+    setSchoolYearEndDate(currentSchool?.school_year_end_date || '');
   }, [
     currentSchool?.google_sheet_url, 
     currentSchool?.google_sheet_name, 
     currentSchool?.google_sheet_range,
     currentSchool?.google_sheet_lessons_url,
     currentSchool?.google_sheet_lessons_name,
-    currentSchool?.google_sheet_lessons_range
+    currentSchool?.google_sheet_lessons_range,
+    currentSchool?.school_year_end_date
   ]);
+
+  // Fetch lesson count without end dates when school changes
+  useEffect(() => {
+    if (currentSchool?.id) {
+      fetchLessonsWithoutEndDateCount();
+    }
+  }, [currentSchool?.id]);
 
   // Redirect non-admin users (school-specific admin check)
   if (!isSchoolAdmin) {
     return <Navigate to="/" />;
   }
+
+  const fetchLessonsWithoutEndDateCount = async () => {
+    if (!currentSchool?.id) return;
+    
+    setIsFetchingLessonCount(true);
+    try {
+      const { data, error } = await supabase
+        .rpc('count_lessons_without_end_date', { p_school_id: currentSchool.id });
+
+      if (error) {
+        throw error;
+      }
+
+      setLessonsWithoutEndDateCount(data || 0);
+    } catch (error) {
+      console.error('Error fetching lessons without end date count:', error);
+      setLessonsWithoutEndDateCount(null);
+    } finally {
+      setIsFetchingLessonCount(false);
+    }
+  };
 
   const handleSaveGoogleSheetUrl = async () => {
     if (!currentSchool) return;
@@ -265,6 +304,79 @@ const Settings = () => {
     }
   };
 
+  const handleSaveSchoolYearEndDate = async () => {
+    if (!currentSchool) return;
+    
+    setIsSavingSchoolYear(true);
+    try {
+      const { error } = await supabase
+        .from('schools')
+        .update({ 
+          school_year_end_date: schoolYearEndDate || null
+        })
+        .eq('id', currentSchool.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await refreshSchool();
+      
+      toast({
+        title: "School year end date saved",
+        description: "The school year end date has been updated successfully.",
+      });
+    } catch (error) {
+      console.error('Error updating school year end date:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update school year end date. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingSchoolYear(false);
+    }
+  };
+
+  const handleBulkUpdateLessonEndDates = async () => {
+    if (!currentSchool || !schoolYearEndDate) return;
+    
+    setIsUpdatingLessonEndDates(true);
+    try {
+      const { data, error } = await supabase
+        .rpc('bulk_update_lesson_end_dates', { 
+          p_school_id: currentSchool.id,
+          p_school_year_end_date: schoolYearEndDate
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      const result = data[0];
+      if (result?.success) {
+        toast({
+          title: "Lesson end dates updated",
+          description: result.message,
+        });
+        
+        // Refresh the count of lessons without end dates
+        await fetchLessonsWithoutEndDateCount();
+      } else {
+        throw new Error(result?.message || 'Unknown error occurred');
+      }
+    } catch (error) {
+      console.error('Error updating lesson end dates:', error);
+      toast({
+        title: "Error",
+        description: `Failed to update lesson end dates: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setIsUpdatingLessonEndDates(false);
+    }
+  };
+
   return (
     <div className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-6">Settings</h1>
@@ -463,6 +575,123 @@ const Settings = () => {
         </CardContent>
       </Card>
 
+      {/* School Year Management Section */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Calendar className="h-5 w-5 mr-2" />
+            School Year Management
+          </CardTitle>
+          <CardDescription>Set school year end date and bulk update lesson schedules</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="school-year-end-date">School Year End Date</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="school-year-end-date"
+                  type="date"
+                  value={schoolYearEndDate}
+                  onChange={(e) => setSchoolYearEndDate(e.target.value)}
+                  className="flex-1"
+                />
+                <Button 
+                  onClick={handleSaveSchoolYearEndDate}
+                  disabled={isSavingSchoolYear}
+                  size="sm"
+                  variant="outline"
+                >
+                  {isSavingSchoolYear ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Set the last day of the school year (inclusive). This will be used to calculate lesson end dates.
+              </p>
+            </div>
+
+            {schoolYearEndDate && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">Bulk Update Lesson End Dates</h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-blue-800">
+                      Lessons without end dates: 
+                    </span>
+                    <span className="font-semibold text-blue-900">
+                      {isFetchingLessonCount ? (
+                        <Loader2 className="h-4 w-4 animate-spin inline" />
+                      ) : (
+                        lessonsWithoutEndDateCount !== null ? lessonsWithoutEndDateCount : 'Unknown'
+                      )}
+                    </span>
+                  </div>
+                  
+                  {lessonsWithoutEndDateCount !== null && lessonsWithoutEndDateCount > 0 && (
+                    <>
+                      <p className="text-sm text-blue-800">
+                        Click the button below to set end date to <strong>{new Date(new Date(schoolYearEndDate).getTime() + 24*60*60*1000).toLocaleDateString('en-GB')}</strong> for all lessons that don't have an end date yet.
+                      </p>
+                      <p className="text-xs text-blue-700">
+                        Note: End dates are exclusive, so this sets the end date to 1 day after the school year end to make the school year end date inclusive.
+                      </p>
+                      <Button 
+                        onClick={handleBulkUpdateLessonEndDates}
+                        disabled={isUpdatingLessonEndDates || !schoolYearEndDate}
+                        className="w-full"
+                        variant="default"
+                      >
+                        {isUpdatingLessonEndDates ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Updating lesson end dates...
+                          </>
+                        ) : (
+                          <>
+                            <Calendar className="h-4 w-4 mr-2" />
+                            Apply End Date to {lessonsWithoutEndDateCount} Lessons
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
+                  
+                  {lessonsWithoutEndDateCount === 0 && (
+                    <div className="flex items-center text-green-700">
+                      <Check className="h-4 w-4 mr-2" />
+                      All lessons already have end dates
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!schoolYearEndDate && (
+              <div className="bg-amber-50 p-4 rounded-lg">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 mr-2 text-amber-600" />
+                  <span className="text-sm text-amber-800">
+                    Set a school year end date to enable bulk updating of lesson end dates.
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Admin User Management Section - For Admins and Super Admins */}
+      {(userRole === 'admin' || userRole === 'superadmin') && (
+        <div className="mb-6">
+          <AdminUserManagement />
+        </div>
+      )}
+
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -547,7 +776,7 @@ const Settings = () => {
                                 <Check className="h-5 w-5 mr-2 text-green-500" />
                                 {match.dbLesson.studentName}
                               </CardTitle>
-                              <CardDescription>{match.dbLesson.instrumentName}</CardDescription>
+                              <CardDescription>{match.dbLesson.subjectName}</CardDescription>
                             </CardHeader>
                             <CardContent className="py-2">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -579,7 +808,7 @@ const Settings = () => {
                           <Card key={idx} className="bg-red-50">
                             <CardHeader className="py-3">
                               <CardTitle className="text-lg">{lesson.studentName}</CardTitle>
-                              <CardDescription>{lesson.instrument}</CardDescription>
+                              <CardDescription>{lesson.subject}</CardDescription>
                             </CardHeader>
                             <CardContent className="py-2">
                               <ul className="space-y-1 text-sm">
@@ -609,7 +838,7 @@ const Settings = () => {
                           <Card key={idx} className="bg-yellow-50">
                             <CardHeader className="py-3">
                               <CardTitle className="text-lg">{lesson.studentName}</CardTitle>
-                              <CardDescription>{lesson.instrumentName}</CardDescription>
+                              <CardDescription>{lesson.subjectName}</CardDescription>
                             </CardHeader>
                             <CardContent className="py-2">
                               <ul className="space-y-1 text-sm">
@@ -648,7 +877,7 @@ const Settings = () => {
                                   <ul className="space-y-1 text-sm">
                                     <li><span className="font-semibold">Teacher:</span> {mismatch.dbLesson.teacherName || 'Unassigned'}</li>
                                     <li><span className="font-semibold">Duration:</span> {mismatch.dbLesson.duration} minutes</li>
-                                    <li><span className="font-semibold">Subject:</span> {mismatch.dbLesson.instrumentName}</li>
+                                    <li><span className="font-semibold">Subject:</span> {mismatch.dbLesson.subjectName}</li>
                                     <li><span className="font-semibold">Start Date:</span> {mismatch.dbLesson.startDate || 'Not set'}</li>
                                     <li><span className="font-semibold">Lesson ID:</span> {mismatch.dbLesson.id}</li>
                                   </ul>
@@ -658,7 +887,7 @@ const Settings = () => {
                                   <ul className="space-y-1 text-sm">
                                     <li><span className="font-semibold">Teacher:</span> {mismatch.sheetLesson.teacher}</li>
                                     <li><span className="font-semibold">Duration:</span> {mismatch.sheetLesson.duration} minutes</li>
-                                    <li><span className="font-semibold">Subject:</span> {mismatch.sheetLesson.instrument}</li>
+                                    <li><span className="font-semibold">Subject:</span> {mismatch.sheetLesson.subject}</li>
                                     <li><span className="font-semibold">Start Date:</span> {mismatch.sheetLesson.startDate}</li>
                                     {mismatch.sheetLesson.row && (
                                       <li><span className="font-semibold">Sheet Row:</span> {mismatch.sheetLesson.row}</li>

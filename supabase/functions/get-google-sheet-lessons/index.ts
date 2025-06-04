@@ -10,26 +10,43 @@ type SheetLesson = {
   duration: number | string;
   teacher: string;
   startDate: string;
-  instrument: string;
+  subject: string;
 };
 
 // Handle the Google Sheets API request using Service Account
 async function fetchGoogleSheetLessons(supabase: any, schoolId: string): Promise<SheetLesson[]> {
   try {
+    console.log('Starting fetchGoogleSheetLessons for school:', schoolId);
+    
     // Get Google Sheets credentials from environment variables
     const privateKey = Deno.env.get("GOOGLE_SHEETS_PRIVATE_KEY");
     const clientEmail = Deno.env.get("GOOGLE_SHEETS_CLIENT_EMAIL");
+    
+    console.log('Environment check:', {
+      hasPrivateKey: !!privateKey,
+      hasClientEmail: !!clientEmail,
+      privateKeyLength: privateKey ? privateKey.length : 0,
+      clientEmail: clientEmail ? clientEmail.substring(0, 20) + '...' : 'none'
+    });
     
     if (!privateKey || !clientEmail) {
       throw new Error('Missing Google Sheets Service Account credentials');
     }
     
     // Get school-specific Google Sheets configuration from database
+    console.log('Fetching school configuration from database...');
     const { data: schoolData, error: schoolError } = await supabase
       .from('schools')
       .select('google_sheet_lessons_url, google_sheet_lessons_name, google_sheet_lessons_range')
       .eq('id', schoolId)
       .single();
+
+    console.log('School data fetch result:', {
+      hasError: !!schoolError,
+      error: schoolError,
+      hasData: !!schoolData,
+      schoolData: schoolData
+    });
 
     if (schoolError) {
       throw new Error(`Error fetching school configuration: ${schoolError.message}`);
@@ -41,6 +58,8 @@ async function fetchGoogleSheetLessons(supabase: any, schoolId: string): Promise
 
     // Extract spreadsheet ID from the URL
     const spreadsheetId = extractSpreadsheetId(schoolData.google_sheet_lessons_url);
+    console.log('Extracted spreadsheet ID:', spreadsheetId);
+    
     if (!spreadsheetId) {
       throw new Error('Invalid Google Sheets lessons URL format');
     }
@@ -50,9 +69,17 @@ async function fetchGoogleSheetLessons(supabase: any, schoolId: string): Promise
     const range = schoolData.google_sheet_lessons_range || 'A1:E1000';
     const fullRange = `${sheetName}!${range}`;
     
+    console.log('Google Sheets API parameters:', {
+      spreadsheetId,
+      sheetName,
+      range,
+      fullRange
+    });
+    
     // Set up Service Account authentication
     const formattedPrivateKey = privateKey.replace(/\\n/g, "\n");
     
+    console.log('Setting up Google Auth...');
     const auth = new GoogleAuth({
       credentials: {
         client_email: clientEmail,
@@ -64,40 +91,77 @@ async function fetchGoogleSheetLessons(supabase: any, schoolId: string): Promise
     const client = await auth.getClient();
     const sheets = new sheets_v4.Sheets({ auth: client });
 
+    console.log('Making Google Sheets API call...');
     // Fetch data from the sheet
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: fullRange,
     });
     
+    console.log('Google Sheets API response:', {
+      hasData: !!response.data,
+      hasValues: !!response.data.values,
+      valuesLength: response.data.values ? response.data.values.length : 0,
+      firstRowSample: response.data.values && response.data.values.length > 0 ? response.data.values[0] : null,
+      rawResponse: response.data
+    });
+    
     const values = response.data.values;
     
-    if (!values || !Array.isArray(values) || values.length < 2) {
+    if (!values || !Array.isArray(values) || values.length < 1) {
+      console.error('Invalid Google Sheets data - detailed check:', {
+        hasValues: !!values,
+        isArray: Array.isArray(values),
+        length: values ? values.length : 0,
+        values: values,
+        fullResponse: response.data
+      });
       throw new Error('Invalid or empty Google Sheets data');
     }
     
-    // Extract headers and data
-    const [headers, ...rows] = values;
+    console.log('Raw values from sheet:', {
+      totalRows: values.length,
+      allValues: values
+    });
     
-    if (headers.length < 5) {
-      throw new Error('Invalid Google Sheets headers: expected at least 5 columns');
-    }
-    
-    // Transform the rows into objects with appropriate column names
-    return rows
-      .filter(row => row.length >= 5 && row[0]?.trim()) // Ensure the row has data and student name
+    // Process all rows as data (no header assumption)
+    // Filter rows that have at least some data in the first 5 columns
+    const lessons = values
+      .filter(row => {
+        const hasStudentName = row && row[0] && row[0].toString().trim();
+        const hasMinimumData = row && row.length >= 3; // At least student, duration, teacher
+        console.log('Row filter check:', {
+          row: row,
+          hasStudentName,
+          hasMinimumData,
+          passed: hasStudentName && hasMinimumData
+        });
+        return hasStudentName && hasMinimumData;
+      })
       .map(row => {
-        return {
-          studentName: row[0]?.trim() || '',
-          // Parse duration as number if possible, otherwise keep as string
-          duration: parseInt(row[1], 10) || row[1] || '',
-          teacher: row[2]?.trim() || '',
-          startDate: row[3]?.trim() || '',
-          instrument: row[4]?.trim() || ''
+        const lesson = {
+          studentName: (row[0] || '').toString().trim(),
+          duration: row[1] ? (parseInt(row[1].toString(), 10) || row[1].toString()) : '',
+          teacher: (row[2] || '').toString().trim(),
+          startDate: (row[3] || '').toString().trim(),
+          subject: (row[4] || '').toString().trim()
         };
+        console.log('Processed lesson:', lesson);
+        return lesson;
       });
+      
+    console.log('Processed lessons:', {
+      totalLessons: lessons.length,
+      sampleLesson: lessons[0]
+    });
+    
+    return lessons;
   } catch (error) {
-    console.error('Error fetching Google Sheet lessons:', error);
+    console.error('Error in fetchGoogleSheetLessons:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     throw error;
   }
 }
@@ -134,20 +198,41 @@ const createSupabaseClient = (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
   
+  // Create client with user's JWT for authentication
   return createClient(supabaseUrl, supabaseKey, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false }
+    auth: { 
+      persistSession: false,
+      autoRefreshToken: false
+    },
+    global: {
+      headers: {
+        Authorization: authHeader // Use the user's JWT token
+      }
+    }
+  });
+};
+
+// Create a separate client for database operations that bypasses RLS
+const createServiceRoleClient = () => {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: { 
+      persistSession: false,
+      autoRefreshToken: false
+    }
   });
 };
 
 // The main serve function that handles requests
 serve(async (req: Request) => {
-  // Enable CORS
+  // Enable CORS with all necessary headers for Supabase client
   const headers = new Headers({
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type'
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, x-client-info, apikey'
   });
   
   // Handle preflight requests
@@ -208,8 +293,11 @@ serve(async (req: Request) => {
       );
     }
     
-    // Fetch the Google Sheet data
-    const lessons = await fetchGoogleSheetLessons(supabase, school_id);
+    // Create service role client for database operations
+    const serviceRoleSupabase = createServiceRoleClient();
+    
+    // Fetch the Google Sheet data using service role client
+    const lessons = await fetchGoogleSheetLessons(serviceRoleSupabase, school_id);
     
     // Return the lessons
     return new Response(

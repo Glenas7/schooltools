@@ -33,7 +33,7 @@ const fetchStudentNames = async (schoolId: string | null): Promise<string[]> => 
     if (!schoolId) {
       return MOCK_STUDENT_NAMES;
     }
-
+    
     // Call the Edge Function with school_id
     const { data, error } = await supabase.functions.invoke('public-get-students', {
       body: { school_id: schoolId }
@@ -42,7 +42,7 @@ const fetchStudentNames = async (schoolId: string | null): Promise<string[]> => 
     if (error) {
       return MOCK_STUDENT_NAMES;
     }
-
+    
     // Handle the response based on its structure
     if (data && Array.isArray(data)) {
       return data;

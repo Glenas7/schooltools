@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { format, startOfWeek, isAfter, isBefore, isEqual, parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { Lesson } from '../../types';
 import { useSubjects } from '../../contexts/SubjectsContext';
@@ -9,7 +9,7 @@ interface TimeGridProps {
   weekDates: Date[];
   lessons: Lesson[];
   selectedTeacherId: string;
-  onLessonDrop: (lessonId: string, day: number, time: string, date: Date) => void;
+  onLessonDrop: (lessonId: string, day: number, time: string, date: Date, sourceDate?: Date | null) => void;
   onLessonClick?: (lessonId: string) => void;
   isAdmin: boolean;
   editMode?: boolean;
@@ -82,6 +82,68 @@ const TimeGrid = ({
   
   // Track if we're in an active drag operation
   const [isActiveDrag, setIsActiveDrag] = useState(false);
+  
+  // Store persistent drag state that survives state resets during drag operation
+  const persistentDragState = useRef<{
+    lessonId: string | null;
+    lessonDuration: number | null;
+    hasValidDragData: boolean;
+    isDragInProgress: boolean; // Track if we're in the middle of a drag
+    lastValidPreview: { day: number; time: string; yPosition: number; originalPosition?: number; isRepositioned?: boolean } | null;
+    isProcessed: boolean; // NEW: Track if this drag operation has already been processed
+  }>({
+    lessonId: null,
+    lessonDuration: null,
+    hasValidDragData: false,
+    isDragInProgress: false,
+    lastValidPreview: null,
+    isProcessed: false
+  });
+  
+  // Use refs to store current state values that event handlers can access
+  const dragStateRef = useRef({
+    isActiveDrag: false,
+    draggedLesson: null as { id: string; duration: number } | null,
+    dragPreview: null as { day: number; time: string; yPosition: number; originalPosition?: number; isRepositioned?: boolean } | null
+  });
+  
+  // Update refs whenever state changes
+  useEffect(() => {
+    dragStateRef.current.isActiveDrag = isActiveDrag;
+    
+    // Mark drag as in progress when isActiveDrag becomes true
+    if (isActiveDrag && !persistentDragState.current.isDragInProgress) {
+      persistentDragState.current.isDragInProgress = true;
+    }
+  }, [isActiveDrag]);
+  
+  useEffect(() => {
+    dragStateRef.current.draggedLesson = draggedLesson;
+    
+    // Store persistent drag data when drag starts
+    if (draggedLesson && !persistentDragState.current.hasValidDragData) {
+      persistentDragState.current.lessonId = draggedLesson.id;
+      persistentDragState.current.lessonDuration = draggedLesson.duration;
+      persistentDragState.current.hasValidDragData = true;
+    }
+    
+    // Only clear persistent data if we're not in the middle of a drag operation
+    // This prevents clearing during intermediate re-renders while dragging
+    if (!draggedLesson && persistentDragState.current.hasValidDragData && !persistentDragState.current.isDragInProgress) {
+      persistentDragState.current.lessonId = null;
+      persistentDragState.current.lessonDuration = null;
+      persistentDragState.current.hasValidDragData = false;
+    }
+  }, [draggedLesson]);
+  
+  useEffect(() => {
+    dragStateRef.current.dragPreview = dragPreview;
+    
+    // Store the dragPreview in persistent state so it survives re-renders
+    if (dragPreview && persistentDragState.current.isDragInProgress) {
+      persistentDragState.current.lastValidPreview = dragPreview;
+    }
+  }, [dragPreview]);
   
   // Update our local state when global state changes
   useEffect(() => {
@@ -318,30 +380,25 @@ const TimeGrid = ({
       // Get position of mouse relative to column
       const columnRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const relativeY = e.clientY - columnRect.top;
-      console.log("[DEBUG] Raw mouse position Y:", relativeY);
       
       // Grid boundaries in pixels
       const minY = 0; // startHour:00 (top of grid)
       const gridEndTimeY = (gridVisualEndHour - startHour) * 96; // endHour:00 (bottom of grid)
       const maxYForLessonTop = gridEndTimeY - lessonHeight; // Max Y for lesson top
-      console.log("[DEBUG] Boundaries - minY:", minY, "maxY:", maxYForLessonTop);
       
       // Ensure the lesson never starts before startHour:00
       // This explicit check reinforces the clamping
       const clampedMouseY = Math.max(minY, Math.min(relativeY, maxYForLessonTop));
-      console.log("[DEBUG] Clamped mouse Y:", clampedMouseY, "Was clamped:", clampedMouseY !== relativeY);
       
       // Convert to time and back to get snapping behavior
       // yPositionToTime will ensure time never goes before startHour:00
       const time = yPositionToTime(clampedMouseY);
-      console.log("[DEBUG] Converted to time:", time);
       
       // Store the original snapped position (ignoring collisions)
       const originalYPosition = timeToYPosition(time);
       
       // Find the nearest valid position that avoids overlaps
       const validPosition = findNearestValidPosition(day, time, currentLessonDuration);
-      console.log("[DEBUG] Valid position:", validPosition);
       
       // Check if we had to reposition due to collision
       const isRepositioned = validPosition.time !== time;
@@ -353,13 +410,6 @@ const TimeGrid = ({
         yPosition: validPosition.yPosition,
         originalPosition: originalYPosition,
         isRepositioned
-      });
-      console.log("[DEBUG] Set dragPreview:", { 
-        day, 
-        time: validPosition.time, 
-        yPosition: validPosition.yPosition, 
-        originalPosition: originalYPosition, 
-        isRepositioned 
       });
       
       // Try to set draggedLesson state from dataTransfer if not already set
@@ -395,10 +445,7 @@ const TimeGrid = ({
     // Only clear preview if we're not in an active drag operation
     // AND we're actually leaving the grid (not just moving between elements)
     if (!isActiveDrag && (!relatedTarget || !e.currentTarget.contains(relatedTarget))) {
-      console.log("[DEBUG] handleDragLeave: Actually leaving grid, clearing preview");
     setDragPreview(null);
-    } else {
-      console.log("[DEBUG] handleDragLeave: Just moving between elements or in active drag, keeping preview");
     }
   };
 
@@ -408,9 +455,19 @@ const TimeGrid = ({
     // End the active drag
     setIsActiveDrag(false);
     
+    // Check if this drag operation has already been processed
+    if (persistentDragState.current.isProcessed) {
+      console.log("[TimeGrid] handleDrop - drag already processed, skipping");
+      return;
+    }
+    
     if (isAdmin && dragPreview) {
+      // Mark as processed to prevent duplicate handling
+      persistentDragState.current.isProcessed = true;
+      
       // Try to get lessonId from draggedLesson or dataTransfer
       let lessonId = '';
+      let sourceDayIndex: number | null = null;
       
       // First priority: use our stored draggedLesson state
       if (draggedLesson) {
@@ -421,17 +478,27 @@ const TimeGrid = ({
         try {
           lessonId = e.dataTransfer.getData('lesson');
         } catch (error) {
-          // This is expected during the first drop event
+          // Expected if dataTransfer is not readable
         }
+      }
+      
+      // Try to get the source day index from dataTransfer
+      try {
+        const sourceDayStr = e.dataTransfer.getData('sourceDayIndex');
+        if (sourceDayStr) {
+          sourceDayIndex = parseInt(sourceDayStr, 10);
+        }
+      } catch (error) {
+        // Expected if dataTransfer is not readable
       }
       
       if (lessonId) {
         // Get the actual date from the weekDates array for the column where the lesson is dropped
         const columnDate = weekDates[day];
+        // Get the source date if we have the source day index
+        const sourceDate = sourceDayIndex !== null ? weekDates[sourceDayIndex] : null;
         // Use calculated time from dragPreview and pass the actual date
-        onLessonDrop(lessonId, day, dragPreview.time, columnDate);
-      } else {
-        // This is expected during the first drop event
+        onLessonDrop(lessonId, day, dragPreview.time, columnDate, sourceDate);
       }
       
       // Reset states
@@ -485,27 +552,19 @@ const TimeGrid = ({
   // Calculate drag preview style based on position
   const getDragPreviewStyle = (): React.CSSProperties | null => {
     if (!dragPreview) {
-      console.log("[DEBUG] getDragPreviewStyle: No dragPreview state, returning null");
       return null;
     }
-    
-    console.log("[DEBUG] getDragPreviewStyle: Using dragPreview", dragPreview);
     
     // First try globalDraggedLesson, then local draggedLesson, then default
     let duration = 30;
     if (globalDraggedLesson) {
       duration = globalDraggedLesson.duration;
-      console.log("[DEBUG] getDragPreviewStyle: Using globalDraggedLesson duration:", duration);
     } else if (draggedLesson) {
       duration = draggedLesson.duration;
-      console.log("[DEBUG] getDragPreviewStyle: Using draggedLesson duration:", duration);
-    } else {
-      console.log("[DEBUG] getDragPreviewStyle: Using default duration:", duration);
     }
     
     // Always use the stored lesson duration or default
     const heightInPixels = durationToHeight(duration);
-    console.log("[DEBUG] getDragPreviewStyle: Final height in pixels:", heightInPixels);
     
     // Get color for the drag preview
     const color = '#9b87f5'; // Default purple color
@@ -581,10 +640,40 @@ const TimeGrid = ({
   // Global event listeners to handle dragging outside the grid
   useEffect(() => {
     // Only add these listeners if we're in an active drag
-    if (!isActiveDrag || !isAdmin) return;
+    if (!isActiveDrag || !isAdmin) {
+      return;
+    }
     
     const handleGlobalMouseMove = (e: MouseEvent) => {
-      if (!draggedLesson) return;
+      // Get current values from ref
+      const currentDraggedLesson = dragStateRef.current.draggedLesson;
+      if (!currentDraggedLesson) {
+        return;
+      }
+      
+      // Check if we're hovering over special drop zones (unassigned lessons, trash)
+      const elementUnderMouse = document.elementFromPoint(e.clientX, e.clientY);
+      if (elementUnderMouse) {
+        // Check for trash zone - look for elements with trash drop handlers
+        const isOverTrashZone = elementUnderMouse.closest('[class*="border-red"]') ||
+                               elementUnderMouse.closest('[class*="bg-red"]') ||
+                               elementUnderMouse.closest('*').querySelector('[class*="Trash2"]') ||
+                               // Check if any parent has onDragDrop for trash (we need to check if it's a trash card)
+                               !!elementUnderMouse.closest('div')?.textContent?.includes('Drop here to delete');
+        
+        // Check for unassigned lessons zone - look for the scrollable area with drag handlers
+        const isOverUnassignedZone = elementUnderMouse.closest('.overflow-y-auto') ||
+                                    elementUnderMouse.closest('[class*="border-purple"]') ||
+                                    elementUnderMouse.closest('*').querySelector('[placeholder*="Search lessons"]') ||
+                                    // Check if it's within the UnassignedLessons card area
+                                    !!elementUnderMouse.closest('div')?.textContent?.includes('Unassigned Lessons');
+        
+        if (isOverTrashZone || isOverUnassignedZone) {
+          // Clear preview when over special drop zones
+          setDragPreview(null);
+          return;
+        }
+      }
       
       // Find the day column the mouse is over
       const columns = document.querySelectorAll('.day-column');
@@ -605,7 +694,7 @@ const TimeGrid = ({
         const relativeY = e.clientY - columnRect.top;
         
         // Apply the same clamping logic as in handleDragOver
-        const currentLessonDuration = draggedLesson.duration;
+        const currentLessonDuration = currentDraggedLesson.duration;
         const lessonHeight = durationToHeight(currentLessonDuration);
         
         const minY = 0;
@@ -635,14 +724,41 @@ const TimeGrid = ({
           originalPosition: originalYPosition,
           isRepositioned
         });
+      } else {
+        // Not over any day column, clear preview
+        setDragPreview(null);
       }
     };
     
     const handleGlobalMouseUp = () => {
+      // Get current values from ref
+      const currentDragPreview = dragStateRef.current.dragPreview;
+      const currentDraggedLesson = dragStateRef.current.draggedLesson;
+      
       // End the drag when mouse is released
       setIsActiveDrag(false);
       
-      // Don't clear the preview here, as we might be dropping onto a valid target
+      // Check if this drag operation has already been processed
+      if (persistentDragState.current.isProcessed) {
+        console.log("[TimeGrid] handleGlobalMouseUp - drag already processed, skipping");
+        return;
+      }
+      
+      // If we have a valid drag preview and lesson, place the lesson there
+      if (isAdmin && currentDragPreview && currentDraggedLesson) {
+        // Mark as processed to prevent duplicate handling
+        persistentDragState.current.isProcessed = true;
+        
+        // Get the actual date from the weekDates array for the column where the lesson would be dropped
+        const columnDate = weekDates[currentDragPreview.day];
+        // Use calculated time from dragPreview and pass the actual date
+        // Note: sourceDate is null for global drag operations since we don't track it
+        onLessonDrop(currentDraggedLesson.id, currentDragPreview.day, currentDragPreview.time, columnDate, null);
+        
+        // Reset states
+        setDragPreview(null);
+        setDraggedLesson(null);
+      }
     };
     
     // Add global event listeners
@@ -654,22 +770,110 @@ const TimeGrid = ({
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [isActiveDrag, isAdmin, draggedLesson, dragPreview, visibleLessons]);
+  }, [isActiveDrag, isAdmin]); // Simplified dependencies
 
   // Add global listeners for drag events to capture unassigned lessons from other components
   useEffect(() => {
     // This helps us track cross-component drags
     const handleGlobalDragOver = (e: DragEvent) => {
-      if (!draggedLesson && isAdmin) {
-        // Don't try to read data here - it will throw an error
-        // Just log that we detected a global drag
-      }
+      // Don't try to read data here - it will throw an error
     };
 
     const handleGlobalDragEnd = (e: DragEvent) => {
-      // Clean up our state when drag ends
-      setDraggedLesson(null);
+      // Check if the drop happened over special drop zones (unassigned lessons, trash)
+      const elementUnderMouse = document.elementFromPoint(e.clientX, e.clientY);
+      if (elementUnderMouse) {
+        // Check for trash zone - look for elements with trash drop handlers
+        const isOverTrashZone = elementUnderMouse.closest('[class*="border-red"]') ||
+                               elementUnderMouse.closest('[class*="bg-red"]') ||
+                               elementUnderMouse.closest('*').querySelector('[class*="Trash2"]') ||
+                               // Check if any parent has onDragDrop for trash (we need to check if it's a trash card)
+                               !!elementUnderMouse.closest('div')?.textContent?.includes('Drop here to delete');
+        
+        // Check for unassigned lessons zone - look for the scrollable area with drag handlers
+        const isOverUnassignedZone = elementUnderMouse.closest('.overflow-y-auto') ||
+                                    elementUnderMouse.closest('[class*="border-purple"]') ||
+                                    elementUnderMouse.closest('*').querySelector('[placeholder*="Search lessons"]') ||
+                                    // Check if it's within the UnassignedLessons card area
+                                    !!elementUnderMouse.closest('div')?.textContent?.includes('Unassigned Lessons');
+        
+        if (isOverTrashZone || isOverUnassignedZone) {
+          // Don't place in grid when dropped on special zones - let their handlers deal with it
+          // Just clean up our state
+          persistentDragState.current.isDragInProgress = false;
+          persistentDragState.current.lessonId = null;
+          persistentDragState.current.lessonDuration = null;
+          persistentDragState.current.hasValidDragData = false;
+          persistentDragState.current.lastValidPreview = null;
+          persistentDragState.current.isProcessed = false; // Reset processed flag
+          
+          setDragPreview(null);
+          setDraggedLesson(null);
+          setIsActiveDrag(false);
+          return;
+        }
+      }
+      
+      // Check if this drag operation has already been processed
+      if (persistentDragState.current.isProcessed) {
+        console.log("[TimeGrid] handleGlobalDragEnd - drag already processed, skipping");
+        // Still need to clean up state
+        persistentDragState.current.isDragInProgress = false;
+        persistentDragState.current.lessonId = null;
+        persistentDragState.current.lessonDuration = null;
+        persistentDragState.current.hasValidDragData = false;
+        persistentDragState.current.lastValidPreview = null;
+        persistentDragState.current.isProcessed = false; // Reset processed flag
+        
+        setDragPreview(null);
+        setDraggedLesson(null);
+        setIsActiveDrag(false);
+        return;
+      }
+      
+      // Get current state values - use local state which has full lesson data
+      const currentDragPreview = dragPreview;
+      const currentDraggedLesson = draggedLesson;
+      const persistentData = persistentDragState.current;
+      
+      // Use current preview if available, otherwise use persistent preview
+      const previewToUse = currentDragPreview || persistentData.lastValidPreview;
+      
+      // Try to place lesson using either current state or persistent data
+      const canPlaceWithCurrentState = isAdmin && previewToUse && currentDraggedLesson;
+      const canPlaceWithPersistentState = isAdmin && previewToUse && persistentData.hasValidDragData;
+      
+      if (canPlaceWithCurrentState) {
+        // Mark as processed to prevent duplicate handling
+        persistentDragState.current.isProcessed = true;
+        
+        // Get the actual date from the weekDates array for the column where the lesson would be dropped
+        const columnDate = weekDates[previewToUse.day];
+        // Use calculated time from dragPreview and pass the actual date
+        // Note: sourceDate is null for global drag operations since we don't track it
+        onLessonDrop(currentDraggedLesson.id, previewToUse.day, previewToUse.time, columnDate, null);
+      } else if (canPlaceWithPersistentState) {
+        // Mark as processed to prevent duplicate handling
+        persistentDragState.current.isProcessed = true;
+        
+        // Get the actual date from the weekDates array for the column where the lesson would be dropped
+        const columnDate = weekDates[previewToUse.day];
+        // Use calculated time from dragPreview and persistent lesson ID
+        // Note: sourceDate is null for global drag operations since we don't track it
+        onLessonDrop(persistentData.lessonId!, previewToUse.day, previewToUse.time, columnDate, null);
+      }
+      
+      // Mark drag as finished and clean up persistent data
+      persistentDragState.current.isDragInProgress = false;
+      persistentDragState.current.lessonId = null;
+      persistentDragState.current.lessonDuration = null;
+      persistentDragState.current.hasValidDragData = false;
+      persistentDragState.current.lastValidPreview = null;
+      persistentDragState.current.isProcessed = false; // Reset processed flag
+      
+      // Reset states
       setDragPreview(null);
+      setDraggedLesson(null);
       setIsActiveDrag(false);
     };
 
@@ -682,7 +886,7 @@ const TimeGrid = ({
       document.removeEventListener('dragend', handleGlobalDragEnd);
       document.removeEventListener('drop', handleGlobalDragEnd);
     };
-  }, [draggedLesson, isAdmin]);
+  }, [isAdmin, dragPreview, draggedLesson, weekDates, onLessonDrop]); // Add dependencies to prevent stale closures
   
   // Handle when something is dragged into our component (for unassigned lessons)
   const handleDragEnter = (e: React.DragEvent) => {
@@ -775,12 +979,18 @@ const TimeGrid = ({
                  onClick={(e) => handleLessonClick(e, lesson.id)}
                       onDragStart={(e) => {
                    if (isAdmin && !editMode) {
+                     // Reset processed flag for new drag operation
+                     persistentDragState.current.isProcessed = false;
+                     
                      try {
                        // Store ID in the dataTransfer to maintain compatibility with existing code
                           e.dataTransfer.setData("lesson", lesson.id);
                        
                        // Also store the duration directly in dataTransfer
                        e.dataTransfer.setData("lessonDuration", lesson.duration.toString());
+                       
+                       // IMPORTANT: Store the source day to know where the lesson was dragged from
+                       e.dataTransfer.setData("sourceDayIndex", dayIndex.toString());
                        
                        // Set the full dragged lesson info in state (this is the important part)
                        setDraggedLesson({

@@ -23,6 +23,7 @@ export interface School {
   google_sheet_lessons_name?: string;
   google_sheet_lessons_range?: string;
   join_code: string;
+  school_year_end_date?: string; // YYYY-MM-DD format
   settings?: Record<string, any>;
   active: boolean;
   created_at: string;
