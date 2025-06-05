@@ -59,9 +59,9 @@ const LoginForm = () => {
     if (isAuthenticated && user && schools !== undefined) {
       console.log('[LoginForm] User authenticated on login page, determining redirect...');
       if (schools.length === 0) {
-        // User has no schools, redirect to school setup
-        console.log('[LoginForm] User has no schools, redirecting to school-setup');
-        navigate('/school-setup', { replace: true });
+        // User has no schools, redirect to school select (which will handle the no-schools case)
+        console.log('[LoginForm] User has no schools, redirecting to school-select');
+        navigate('/school-select', { replace: true });
       } else if (user.last_accessed_school_id && schools.find(s => s.id === user.last_accessed_school_id)) {
         // User has a last accessed school and it's still available, redirect there
         console.log('[LoginForm] Redirecting to last accessed school:', user.last_accessed_school_id);

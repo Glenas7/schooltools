@@ -99,8 +99,8 @@ const SignupForm = () => {
           description: "Please check your email to verify your account, then you'll be able to create your school.",
         });
 
-        // Navigate to school creation/selection after successful signup
-        navigate('/school-setup');
+        // Navigate to school selection after successful signup (which will show create/join options for new users)
+        navigate('/school-select');
       }
     } catch (error: any) {
       console.error('Signup error:', error);

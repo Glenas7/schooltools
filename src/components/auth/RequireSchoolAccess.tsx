@@ -94,9 +94,9 @@ const RequireSchoolAccess: React.FC<RequireSchoolAccessProps> = ({ children }) =
         console.log('[RequireSchoolAccess] No access to school', schoolId);
         // User doesn't have access to this school
         if (schools.length === 0) {
-          // User has no schools at all
-          console.log('[RequireSchoolAccess] User has no schools, redirecting to school-setup');
-          navigate('/school-setup');
+          // User has no schools at all, redirect to school select (which will handle the no-schools case)
+          console.log('[RequireSchoolAccess] User has no schools, redirecting to school-select');
+          navigate('/school-select');
         } else if (schools.length === 1) {
           // User has one school, redirect them there
           console.log('[RequireSchoolAccess] User has one school, redirecting to', schools[0].id);
