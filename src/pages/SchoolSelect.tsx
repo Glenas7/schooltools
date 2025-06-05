@@ -24,14 +24,6 @@ const SchoolSelect = () => {
     }
   }, [isAuthenticated, user, navigate, fetchUserSchools]);
 
-  // If user has no schools, redirect to school setup to prevent session issues
-  // This was in the original working code and is needed for proper session management
-  useEffect(() => {
-    if (!loading && schools.length === 0) {
-      navigate('/school-setup');
-    }
-  }, [schools, loading, navigate]);
-
   const handleSchoolSelect = async (schoolId: string) => {
     try {
       await updateLastAccessedSchool(schoolId);
