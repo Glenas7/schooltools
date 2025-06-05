@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 import { Lesson } from '../types';
-import { format, parseISO, addMinutes, parse, isValid } from 'date-fns';
+import { format, parseISO, addMinutes, parse, isValid, startOfWeek, addDays } from 'date-fns';
 
 // Define types for lesson data
 export type SheetLesson = {
@@ -851,11 +851,45 @@ export const compareLessons = async (schoolId: string): Promise<ComparisonResult
     const sheetLessons = await fetchGoogleSheetLessons(schoolId);
     console.log(`Retrieved ${sheetLessons.length} Google Sheet lessons`);
     
+    // Filter database lessons to exclude those that have already ended
+    // Google Sheets data is assumed to be current, so we only want active DB lessons
+    // Calculate Friday of current week (since end_dates are exclusive, lessons ending
+    // before this Friday are no longer active in the current week)
+    const now = new Date();
+    const mondayOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 }); // Monday = 1
+    const fridayOfCurrentWeek = addDays(mondayOfCurrentWeek, 4); // Friday is 4 days after Monday
+    
+    console.log(`Filtering DB lessons - excluding those with end_date before ${format(fridayOfCurrentWeek, 'yyyy-MM-dd')}`);
+    
+    const activeDbLessons = dbLessons.filter(lesson => {
+      // Include lessons without end_date (ongoing lessons)
+      if (!lesson.endDate) {
+        return true;
+      }
+      
+      try {
+        const endDate = parseISO(lesson.endDate);
+        const isActive = endDate >= fridayOfCurrentWeek;
+        
+        if (!isActive) {
+          console.log(`Excluding ended lesson: ${lesson.studentName} (${lesson.subjectName}) - ended ${lesson.endDate}`);
+        }
+        
+        return isActive;
+      } catch (error) {
+        console.warn(`Invalid end_date format for lesson ${lesson.id}: ${lesson.endDate}`);
+        // Include lessons with invalid dates to avoid losing data
+        return true;
+      }
+    });
+    
+    console.log(`Filtered ${dbLessons.length} DB lessons to ${activeDbLessons.length} active lessons`);
+    
     // Log sample data to help debug
-    if (dbLessons.length > 0) {
-      console.log('Sample DB lesson:', dbLessons[0]);
+    if (activeDbLessons.length > 0) {
+      console.log('Sample active DB lesson:', activeDbLessons[0]);
     } else {
-      console.warn('No database lessons found!');
+      console.warn('No active database lessons found!');
     }
     
     if (sheetLessons.length > 0) {
@@ -865,7 +899,7 @@ export const compareLessons = async (schoolId: string): Promise<ComparisonResult
     }
     
     // Validate data before processing - only include lessons with sufficient data
-    const validDbLessons = dbLessons.filter(lesson => {
+    const validDbLessons = activeDbLessons.filter(lesson => {
       const isValid = lesson && 
         lesson.studentName && 
         lesson.studentName !== 'Unnamed Student';
@@ -894,7 +928,7 @@ export const compareLessons = async (schoolId: string): Promise<ComparisonResult
       return isValid;
     });
     
-    console.log(`Valid lessons: ${validDbLessons.length}/${dbLessons.length} DB, ${validSheetLessons.length}/${sheetLessons.length} Sheet`);
+    console.log(`Valid lessons: ${validDbLessons.length}/${activeDbLessons.length} DB, ${validSheetLessons.length}/${sheetLessons.length} Sheet`);
     
     // If either source has no valid lessons, log a warning
     if (validDbLessons.length === 0) {
@@ -963,6 +997,7 @@ export const compareLessons = async (schoolId: string): Promise<ComparisonResult
     console.log('Improved comparison summary:', {
       originalDbLessonsCount: dbLessons.length,
       originalSheetLessonsCount: sheetLessons.length,
+      filteredActiveDbLessons: activeDbLessons.length,
       validDbLessonsCount: validDbLessons.length,
       validSheetLessonsCount: validSheetLessons.length,
       perfectMatches: result.matched.length,
