@@ -742,6 +742,103 @@ const findDifferences = (dbLesson: DbLesson, sheetLesson: SheetLesson): string[]
   return differences;
 };
 
+// Helper function to find the best match when multiple candidates exist
+const findBestMatch = (dbLesson: DbLesson, candidateSheetLessons: SheetLesson[]): SheetLesson => {
+  if (candidateSheetLessons.length === 1) {
+    return candidateSheetLessons[0];
+  }
+  
+  // Tiebreaker 1: Teacher match (if both lessons have teachers assigned)
+  if (dbLesson.teacherName) {
+    const teacherMatches = candidateSheetLessons.filter(sheet => 
+      sheet.teacher && 
+      dbLesson.teacherName!.toLowerCase() === sheet.teacher.toLowerCase()
+    );
+    
+    if (teacherMatches.length === 1) {
+      return teacherMatches[0];
+    }
+    
+    // If we have teacher matches, continue with those for next tiebreaker
+    if (teacherMatches.length > 1) {
+      candidateSheetLessons = teacherMatches;
+    }
+  }
+  
+  // Tiebreaker 2: Start date match (if both lessons have start dates)
+  if (dbLesson.startDate) {
+    const dateMatches = candidateSheetLessons.filter(sheet => 
+      sheet.startDate && dbLesson.startDate === sheet.startDate
+    );
+    
+    if (dateMatches.length > 0) {
+      return dateMatches[0];
+    }
+  }
+  
+  // Fallback: Return first candidate
+  return candidateSheetLessons[0];
+};
+
+// Helper function to process matches and remove matched pairs from working arrays
+const processMatches = (
+  workingDbLessons: DbLesson[],
+  workingSheetLessons: SheetLesson[],
+  matchFunction: (db: DbLesson, sheet: SheetLesson) => boolean,
+  perfectMatches: { dbLesson: DbLesson; sheetLesson: SheetLesson }[],
+  mismatchedResults: { dbLesson: DbLesson; sheetLesson: SheetLesson; differences: string[] }[],
+  matchType: 'exact' | 'partial'
+): { updatedDbLessons: DbLesson[]; updatedSheetLessons: SheetLesson[] } => {
+  const processedDbIndices = new Set<number>();
+  const processedSheetIndices = new Set<number>();
+  
+  // For each DB lesson, find all matching sheet lessons
+  workingDbLessons.forEach((dbLesson, dbIndex) => {
+    if (processedDbIndices.has(dbIndex)) return;
+    
+    const matchingSheetLessons: { lesson: SheetLesson; index: number }[] = [];
+    
+    workingSheetLessons.forEach((sheetLesson, sheetIndex) => {
+      if (processedSheetIndices.has(sheetIndex)) return;
+      
+      if (matchFunction(dbLesson, sheetLesson)) {
+        matchingSheetLessons.push({ lesson: sheetLesson, index: sheetIndex });
+      }
+    });
+    
+    // If we found matches, pick the best one using tiebreaker
+    if (matchingSheetLessons.length > 0) {
+      const bestMatch = findBestMatch(
+        dbLesson, 
+        matchingSheetLessons.map(m => m.lesson)
+      );
+      
+      const bestMatchIndex = matchingSheetLessons.find(m => m.lesson === bestMatch)!.index;
+      
+      // Check for differences and categorize accordingly
+      const differences = findDifferences(dbLesson, bestMatch);
+      
+      if (differences.length === 0) {
+        // Perfect match - no differences
+        perfectMatches.push({ dbLesson, sheetLesson: bestMatch });
+      } else {
+        // Has differences - add to mismatched
+        mismatchedResults.push({ dbLesson, sheetLesson: bestMatch, differences });
+      }
+      
+      // Mark as processed
+      processedDbIndices.add(dbIndex);
+      processedSheetIndices.add(bestMatchIndex);
+    }
+  });
+  
+  // Return updated arrays with matched lessons removed
+  const updatedDbLessons = workingDbLessons.filter((_, index) => !processedDbIndices.has(index));
+  const updatedSheetLessons = workingSheetLessons.filter((_, index) => !processedSheetIndices.has(index));
+  
+  return { updatedDbLessons, updatedSheetLessons };
+};
+
 // Main comparison function
 export const compareLessons = async (schoolId: string): Promise<ComparisonResult> => {
   try {
@@ -767,36 +864,7 @@ export const compareLessons = async (schoolId: string): Promise<ComparisonResult
       console.warn('No Google Sheet lessons found!');
     }
     
-    // Prepare result structure
-    const result: ComparisonResult = {
-      missingInDb: [],
-      missingInSheet: [],
-      matched: [],
-      mismatched: []
-    };
-    
-    // Search for Liam Duque Sanz lessons specifically for debugging
-    const liamDbLessons = dbLessons.filter(lesson => 
-      lesson && lesson.studentName && 
-      (lesson.studentName.includes('Liam') || lesson.studentName.includes('Duque'))
-    );
-    const liamSheetLessons = sheetLessons.filter(lesson => 
-      lesson && lesson.studentName && 
-      (lesson.studentName.includes('Liam') || lesson.studentName.includes('Duque'))
-    );
-    
-    console.log(`Found ${liamDbLessons.length} Liam lessons in DB and ${liamSheetLessons.length} in Sheet`);
-    
-    if (liamDbLessons.length > 0) {
-      console.log('Liam DB lessons (complete details):', JSON.stringify(liamDbLessons, null, 2));
-    }
-    
-    if (liamSheetLessons.length > 0) {
-      console.log('Liam Sheet lessons (complete details):', JSON.stringify(liamSheetLessons, null, 2));
-    }
-    
     // Validate data before processing - only include lessons with sufficient data
-    // LESS STRICT VALIDATION - only require student name
     const validDbLessons = dbLessons.filter(lesson => {
       const isValid = lesson && 
         lesson.studentName && 
@@ -837,85 +905,71 @@ export const compareLessons = async (schoolId: string): Promise<ComparisonResult
       console.warn('No valid Google Sheet lessons found for comparison');
     }
     
-    // Track which lessons have been processed to avoid duplication
-    const processedDbKeys = new Set<string>();
-    const processedSheetIndices = new Set<number>();
+    // Create working copies (deep clone) for the greedy removal algorithm
+    let workingDbLessons = [...validDbLessons];
+    let workingSheetLessons = [...validSheetLessons];
     
-    // First, find exact matches and mismatches
-    validDbLessons.forEach((dbLesson) => {
-      // Check each sheet lesson for matches
-      validSheetLessons.forEach((sheetLesson, sheetIndex) => {
-        if (isSameLesson(dbLesson, sheetLesson)) {
-          // Check for differences in details (like teacher, dates, etc.)
-          const differences = findDifferences(dbLesson, sheetLesson);
-          
-          if (differences.length === 0) {
-            // Perfect match
-            result.matched.push({ dbLesson, sheetLesson });
-          } else {
-            // Match on core fields but differences in other fields
-            result.mismatched.push({ dbLesson, sheetLesson, differences });
-          }
-          
-          // Mark as processed
-          processedDbKeys.add(dbLesson.id);
-          processedSheetIndices.add(sheetIndex);
-        }
-      });
-    });
+    // Prepare result structure
+    const result: ComparisonResult = {
+      missingInDb: [],
+      missingInSheet: [],
+      matched: [],
+      mismatched: []
+    };
     
-    console.log(`Found ${result.matched.length} exact matches and ${result.mismatched.length} mismatches`);
+    console.log('Starting improved greedy removal algorithm...');
     
-    // Now look for sheet lessons that might partially match unprocessed db lessons
-    validSheetLessons.forEach((sheetLesson, sheetIndex) => {
-      // Skip already processed
-      if (processedSheetIndices.has(sheetIndex)) {
-        return;
-      }
-      
-      // Look for partial matches
-      let foundPartialMatch = false;
-      
-      for (const dbLesson of validDbLessons) {
-        // Skip already processed
-        if (processedDbKeys.has(dbLesson.id)) {
-          continue;
-        }
-        
-        // Check for partial match
-        if (isPartialMatch(dbLesson, sheetLesson)) {
-          const differences = findDifferences(dbLesson, sheetLesson);
-          result.mismatched.push({ dbLesson, sheetLesson, differences });
-          
-          // Mark as processed
-          processedDbKeys.add(dbLesson.id);
-          processedSheetIndices.add(sheetIndex);
-          
-          foundPartialMatch = true;
-          break;
-        }
-      }
-      
-      // If no match at all, it's missing from DB
-      if (!foundPartialMatch) {
-        result.missingInDb.push(sheetLesson);
-      }
-    });
+    // ROUND 1: Process exact matches (name + duration + instrument)
+    console.log('Round 1: Processing exact matches...');
+    const round1Result = processMatches(
+      workingDbLessons,
+      workingSheetLessons,
+      isSameLesson,
+      result.matched,
+      result.mismatched,
+      'exact'
+    );
     
-    // Any remaining DB lessons are missing from sheet
-    validDbLessons.forEach(dbLesson => {
-      if (!processedDbKeys.has(dbLesson.id)) {
-        result.missingInSheet.push(dbLesson);
-      }
-    });
+    // Update working arrays
+    workingDbLessons = round1Result.updatedDbLessons;
+    workingSheetLessons = round1Result.updatedSheetLessons;
     
-    console.log('Comparison summary:', {
-      dbLessonsCount: validDbLessons.length,
-      sheetLessonsCount: validSheetLessons.length,
-      matched: result.matched.length,
-      mismatched: result.mismatched.length,
-      missingInDb: result.missingInDb.length, 
-      missingInSheet: result.missingInSheet.length
+    console.log(`After Round 1: ${result.matched.length} perfect matches, ${result.mismatched.length} mismatches`);
+    console.log(`Remaining: ${workingDbLessons.length} DB lessons, ${workingSheetLessons.length} Sheet lessons`);
+    
+    // ROUND 2: Process partial matches on remaining lessons
+    console.log('Round 2: Processing partial matches...');
+    const tempPartialMatches: { dbLesson: DbLesson; sheetLesson: SheetLesson }[] = [];
+    const round2Result = processMatches(
+      workingDbLessons,
+      workingSheetLessons,
+      isPartialMatch,
+      tempPartialMatches, // Partial matches that are perfect (shouldn't happen, but for type safety)
+      result.mismatched,  // All partial matches will have differences
+      'partial'
+    );
+    
+    // Update working arrays
+    workingDbLessons = round2Result.updatedDbLessons;
+    workingSheetLessons = round2Result.updatedSheetLessons;
+    
+    console.log(`After Round 2: ${result.mismatched.length} total mismatches`);
+    console.log(`Remaining: ${workingDbLessons.length} DB lessons, ${workingSheetLessons.length} Sheet lessons`);
+    
+    // ROUND 3: Whatever remains is truly unmatched
+    result.missingInDb = [...workingSheetLessons];
+    result.missingInSheet = [...workingDbLessons];
+    
+    console.log('Improved comparison summary:', {
+      originalDbLessonsCount: dbLessons.length,
+      originalSheetLessonsCount: sheetLessons.length,
+      validDbLessonsCount: validDbLessons.length,
+      validSheetLessonsCount: validSheetLessons.length,
+      perfectMatches: result.matched.length,
+      mismatches: result.mismatched.length,
+      missingInDb: result.missingInDb.length,
+      missingInSheet: result.missingInSheet.length,
+      totalProcessed: result.matched.length + result.mismatched.length + result.missingInDb.length + result.missingInSheet.length
     });
     
     return result;
