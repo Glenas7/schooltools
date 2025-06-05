@@ -218,6 +218,15 @@ const Settings = () => {
   const handleAlignWithSheet = async (dbLesson: DbLesson, sheetLesson: SheetLesson) => {
     const lessonId = dbLesson.id;
     
+    if (!currentSchool?.id) {
+      toast({
+        title: "Error",
+        description: "No school selected",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     // Set loading state
     setAligningStatus(prev => ({
       ...prev,
@@ -226,7 +235,7 @@ const Settings = () => {
     
     try {
       // Step 1: Check for conflicts first
-      const { hasConflict, conflictMessage } = await wouldCauseConflict(dbLesson, sheetLesson);
+      const { hasConflict, conflictMessage } = await wouldCauseConflict(dbLesson, sheetLesson, currentSchool.id);
       
       if (hasConflict) {
         setAligningStatus(prev => ({
@@ -244,7 +253,7 @@ const Settings = () => {
       }
       
       // Step 2: If no conflicts, perform the alignment
-      const result = await alignLessonWithSheet(dbLesson, sheetLesson);
+      const result = await alignLessonWithSheet(dbLesson, sheetLesson, currentSchool.id);
       
       if (result.success) {
         toast({
@@ -577,6 +586,18 @@ const Settings = () => {
               <p className="text-sm text-muted-foreground">
                 Cell range for student names (e.g., "A2:A", "B1:B100")
               </p>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 p-4 rounded-lg">
+            <div className="flex items-start">
+              <AlertTriangle className="h-5 w-5 mr-2 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-amber-900 mb-1">Useful tip:</h4>
+                <p className="text-sm text-amber-800">
+                  Include all information you want about a student in the column of the google sheet that you reference here. For example, if knowing the student's year group is important, instead of just having a column with student names like "Alice Smith", have a column with "Alice Smith, Year 7A". This way, you can customize what information you want to see in the schedules.
+                </p>
+              </div>
             </div>
           </div>
           
