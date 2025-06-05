@@ -854,12 +854,12 @@ export const compareLessons = async (schoolId: string): Promise<ComparisonResult
     // Filter database lessons to exclude those that have already ended
     // Google Sheets data is assumed to be current, so we only want active DB lessons
     // Calculate Friday of current week (since end_dates are exclusive, lessons ending
-    // before this Friday are no longer active in the current week)
+    // on or before this Friday are no longer active in the current week)
     const now = new Date();
     const mondayOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 }); // Monday = 1
     const fridayOfCurrentWeek = addDays(mondayOfCurrentWeek, 4); // Friday is 4 days after Monday
     
-    console.log(`Filtering DB lessons - excluding those with end_date before ${format(fridayOfCurrentWeek, 'yyyy-MM-dd')}`);
+    console.log(`Filtering DB lessons - excluding those with end_date <= ${format(fridayOfCurrentWeek, 'yyyy-MM-dd')}`);
     
     const activeDbLessons = dbLessons.filter(lesson => {
       // Include lessons without end_date (ongoing lessons)
@@ -869,7 +869,7 @@ export const compareLessons = async (schoolId: string): Promise<ComparisonResult
       
       try {
         const endDate = parseISO(lesson.endDate);
-        const isActive = endDate >= fridayOfCurrentWeek;
+        const isActive = endDate > fridayOfCurrentWeek;
         
         if (!isActive) {
           console.log(`Excluding ended lesson: ${lesson.studentName} (${lesson.subjectName}) - ended ${lesson.endDate}`);
