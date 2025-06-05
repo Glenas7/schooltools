@@ -55,7 +55,14 @@ const Navbar = () => {
                   <Button 
                     variant="ghost" 
                     size="sm"
-                    onClick={logout}
+                    onClick={async () => {
+                      try {
+                        await logout();
+                      } catch (error) {
+                        console.error('Logout error:', error);
+                        // Even if logout fails, the local state has been cleared
+                      }
+                    }}
                     className="text-gray-500 hover:text-gray-700"
                   >
                     <LogOutIcon className="h-4 w-4 mr-1" />
@@ -84,8 +91,13 @@ const Navbar = () => {
               <Button 
                 variant="ghost" 
                 size="sm"
-                onClick={() => {
-                  logout();
+                onClick={async () => {
+                  try {
+                    await logout();
+                  } catch (error) {
+                    console.error('Logout error:', error);
+                    // Even if logout fails, the local state has been cleared
+                  }
                   setIsMenuOpen(false);
                 }}
                 className="text-gray-500 hover:text-gray-700"

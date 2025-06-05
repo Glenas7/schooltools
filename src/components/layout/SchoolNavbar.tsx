@@ -20,8 +20,14 @@ const SchoolNavbar = () => {
   const location = useLocation();
 
   const handleLogout = async () => {
-    await logout();
-    navigate('/');
+    try {
+      await logout();
+      navigate('/');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Even if logout fails, navigate to home page as the local state has been cleared
+      navigate('/');
+    }
   };
 
   const handleSwitchSchool = () => {

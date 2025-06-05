@@ -143,14 +143,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     console.log("AuthContext: logout function called.");
     setLoading(true);
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error("AuthContext: Supabase signOut error:", error);
+    
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) {
+        console.error("AuthContext: Supabase signOut error:", error);
+        
+        // Handle the known 403 "session_not_found" error in production
+        if (error.status === 403 && error.message?.includes('Session from session_id claim in JWT does not exist')) {
+          console.warn("AuthContext: Known 403 session error - trying refresh session approach");
+          try {
+            // Alternative approach: try refresh session to clear state
+            await supabase.auth.refreshSession();
+          } catch (refreshError) {
+            console.warn("AuthContext: Refresh session also failed, clearing manually");
+          }
+          
+          // Manually clear the local session as recommended by Supabase support
+          // Try multiple approaches to clear the session data
+          try {
+            // Method 1: Clear specific Supabase auth token
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            if (supabaseUrl) {
+              const projectRef = supabaseUrl.split('//')[1]?.split('.')[0];
+              localStorage.removeItem(`sb-${projectRef}-auth-token`);
+            }
+            
+            // Method 2: Clear all localStorage items that start with 'sb-' (more comprehensive)
+            Object.keys(localStorage).forEach(key => {
+              if (key.startsWith('sb-')) {
+                localStorage.removeItem(key);
+              }
+            });
+            
+            console.log("AuthContext: Successfully cleared localStorage auth data");
+          } catch (storageError) {
+            console.warn("AuthContext: Error clearing localStorage:", storageError);
+          }
+          
+          // Force clear all local auth state
+          setUser(null);
+          setSession(null);
+          setLoading(false);
+          return; // Don't throw the error, consider logout successful
+        }
+        
+        setLoading(false);
+        throw error;
+      }
+      console.log("AuthContext: Supabase signOut successful. Local state will be cleared by onAuthStateChange.");
+      // onAuthStateChange (via ref handler) will set loading to false
+    } catch (e) {
+      console.error("AuthContext: Exception in logout function:", e);
       setLoading(false);
-      throw error;
+      throw e;
     }
-    console.log("AuthContext: Supabase signOut successful. Local state will be cleared by onAuthStateChange.");
-    // onAuthStateChange (via ref handler) will set loading to false
   };
 
   const resetPassword = async (email: string) => {
