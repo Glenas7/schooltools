@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save, Calendar } from 'lucide-react';
+import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save, Calendar, Building2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
@@ -45,6 +45,10 @@ const Settings = () => {
   const [lessonsWithoutEndDateCount, setLessonsWithoutEndDateCount] = useState<number | null>(null);
   const [isFetchingLessonCount, setIsFetchingLessonCount] = useState(false);
 
+  // School name editing state (superadmin only)
+  const [schoolName, setSchoolName] = useState(currentSchool?.name || '');
+  const [isSavingSchoolName, setIsSavingSchoolName] = useState(false);
+
   // Sync google sheet state when currentSchool changes
   useEffect(() => {
     setGoogleSheetUrl(currentSchool?.google_sheet_url || '');
@@ -56,6 +60,7 @@ const Settings = () => {
     setLessonsGoogleSheetRange(currentSchool?.google_sheet_lessons_range || 'A1:E1000');
     
     setSchoolYearEndDate(currentSchool?.school_year_end_date || '');
+    setSchoolName(currentSchool?.name || '');
   }, [
     currentSchool?.google_sheet_url, 
     currentSchool?.google_sheet_name, 
@@ -63,7 +68,8 @@ const Settings = () => {
     currentSchool?.google_sheet_lessons_url,
     currentSchool?.google_sheet_lessons_name,
     currentSchool?.google_sheet_lessons_range,
-    currentSchool?.school_year_end_date
+    currentSchool?.school_year_end_date,
+    currentSchool?.name
   ]);
 
   // Fetch lesson count without end dates when school changes
@@ -339,33 +345,28 @@ const Settings = () => {
   };
 
   const handleBulkUpdateLessonEndDates = async () => {
-    if (!currentSchool || !schoolYearEndDate) return;
+    if (!currentSchool?.id || !schoolYearEndDate) return;
     
     setIsUpdatingLessonEndDates(true);
     try {
       const { data, error } = await supabase
         .rpc('bulk_update_lesson_end_dates', { 
           p_school_id: currentSchool.id,
-          p_school_year_end_date: schoolYearEndDate
+          p_end_date: new Date(new Date(schoolYearEndDate).getTime() + 24*60*60*1000).toISOString().split('T')[0]
         });
 
       if (error) {
         throw error;
       }
 
-      const result = data[0];
-      if (result?.success) {
-        toast({
-          title: "Lesson end dates updated",
-          description: result.message,
-        });
-        
-        // Refresh the count of lessons without end dates
-        await fetchLessonsWithoutEndDateCount();
-      } else {
-        throw new Error(result?.message || 'Unknown error occurred');
-      }
-    } catch (error) {
+      // Refresh the count after update
+      await fetchLessonsWithoutEndDateCount();
+      
+      toast({
+        title: "Lesson end dates updated",
+        description: `Successfully updated end dates for ${data || 0} lessons.`,
+      });
+    } catch (error: any) {
       console.error('Error updating lesson end dates:', error);
       toast({
         title: "Error",
@@ -374,6 +375,38 @@ const Settings = () => {
       });
     } finally {
       setIsUpdatingLessonEndDates(false);
+    }
+  };
+
+  const handleSaveSchoolName = async () => {
+    if (!currentSchool || !schoolName.trim()) return;
+    
+    setIsSavingSchoolName(true);
+    try {
+      const { error } = await supabase
+        .from('schools')
+        .update({ name: schoolName.trim() })
+        .eq('id', currentSchool.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await refreshSchool();
+      
+      toast({
+        title: "School name updated",
+        description: "The school name has been updated successfully.",
+      });
+    } catch (error: any) {
+      console.error('Error updating school name:', error);
+      toast({
+        title: "Error",
+        description: `Failed to update school name: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingSchoolName(false);
     }
   };
 
@@ -467,6 +500,62 @@ const Settings = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* School Name Management Section - Only for Super Admins */}
+      {userRole === 'superadmin' && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Building2 className="h-5 w-5 mr-2" />
+              School Management
+            </CardTitle>
+            <CardDescription>Manage basic school information (Super Admin only)</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="school-name">School Name</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="school-name"
+                  type="text"
+                  placeholder="Enter school name"
+                  value={schoolName}
+                  onChange={(e) => setSchoolName(e.target.value)}
+                  className="flex-1"
+                />
+                <Button 
+                  onClick={handleSaveSchoolName}
+                  disabled={isSavingSchoolName || !schoolName.trim() || schoolName === currentSchool?.name}
+                  size="sm"
+                  variant="outline"
+                >
+                  {isSavingSchoolName ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Change the name of the school. This will be reflected throughout the application.
+              </p>
+            </div>
+            
+            <div className="bg-amber-50 p-4 rounded-lg">
+              <div className="flex items-start">
+                <AlertTriangle className="h-5 w-5 mr-2 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-amber-900 mb-1">Important Note</h4>
+                  <p className="text-sm text-amber-800">
+                    Changing the school name will update it everywhere in the application. Make sure this is intentional as it affects all users and reports.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lessons Google Sheet Configuration Section */}
       <Card className="mb-6">
