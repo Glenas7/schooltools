@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save, Calendar, Building2 } from 'lucide-react';
+import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save, Calendar, Building2, Copy } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
@@ -49,6 +49,10 @@ const Settings = () => {
   const [schoolName, setSchoolName] = useState(currentSchool?.name || '');
   const [isSavingSchoolName, setIsSavingSchoolName] = useState(false);
 
+  // School description editing state (superadmin only)
+  const [schoolDescription, setSchoolDescription] = useState(currentSchool?.description || '');
+  const [isSavingSchoolDescription, setIsSavingSchoolDescription] = useState(false);
+
   // Sync google sheet state when currentSchool changes
   useEffect(() => {
     setGoogleSheetUrl(currentSchool?.google_sheet_url || '');
@@ -61,6 +65,7 @@ const Settings = () => {
     
     setSchoolYearEndDate(currentSchool?.school_year_end_date || '');
     setSchoolName(currentSchool?.name || '');
+    setSchoolDescription(currentSchool?.description || '');
   }, [
     currentSchool?.google_sheet_url, 
     currentSchool?.google_sheet_name, 
@@ -69,7 +74,8 @@ const Settings = () => {
     currentSchool?.google_sheet_lessons_name,
     currentSchool?.google_sheet_lessons_range,
     currentSchool?.school_year_end_date,
-    currentSchool?.name
+    currentSchool?.name,
+    currentSchool?.description
   ]);
 
   // Fetch lesson count without end dates when school changes
@@ -410,9 +416,93 @@ const Settings = () => {
     }
   };
 
+  const handleSaveSchoolDescription = async () => {
+    if (!currentSchool || !schoolDescription.trim()) return;
+    
+    setIsSavingSchoolDescription(true);
+    try {
+      const { error } = await supabase
+        .from('schools')
+        .update({ description: schoolDescription.trim() })
+        .eq('id', currentSchool.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await refreshSchool();
+      
+      toast({
+        title: "School description updated",
+        description: "The school description has been updated successfully.",
+      });
+    } catch (error: any) {
+      console.error('Error updating school description:', error);
+      toast({
+        title: "Error",
+        description: `Failed to update school description: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingSchoolDescription(false);
+    }
+  };
+
+  const copyJoinCode = async () => {
+    if (!currentSchool?.join_code) return;
+    
+    try {
+      await navigator.clipboard.writeText(currentSchool.join_code);
+      toast({
+        title: "Join code copied",
+        description: "The join code has been copied to your clipboard.",
+      });
+    } catch (error) {
+      console.error('Error copying join code:', error);
+      toast({
+        title: "Error",
+        description: "Failed to copy join code to clipboard.",
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <div className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-6">Settings</h1>
+
+      {/* Join Code Display Section - For Admins and Super Admins */}
+      {currentSchool?.join_code && (
+        <Card className="mb-6 border-l-4 border-l-blue-500">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Copy className="h-5 w-5 mr-2" />
+              School Join Code
+            </CardTitle>
+            <CardDescription>Share this code with teachers to allow them to join your school</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center space-x-4">
+              <div className="bg-gray-100 p-3 rounded-lg flex-1">
+                <code className="text-lg font-mono font-semibold text-gray-800">
+                  {currentSchool.join_code}
+                </code>
+              </div>
+              <Button 
+                onClick={copyJoinCode}
+                variant="outline"
+                size="sm"
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copy
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground mt-3">
+              Teachers can use this code on the school selection page to request access to join your school.
+            </p>
+          </CardContent>
+        </Card>
+      )}
       
       {/* School Configuration Section */}
       <Card className="mb-6">
@@ -511,35 +601,67 @@ const Settings = () => {
             </CardTitle>
             <CardDescription>Manage basic school information (Super Admin only)</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="school-name">School Name</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="school-name"
-                  type="text"
-                  placeholder="Enter school name"
-                  value={schoolName}
-                  onChange={(e) => setSchoolName(e.target.value)}
-                  className="flex-1"
-                />
-                <Button 
-                  onClick={handleSaveSchoolName}
-                  disabled={isSavingSchoolName || !schoolName.trim() || schoolName === currentSchool?.name}
-                  size="sm"
-                  variant="outline"
-                >
-                  {isSavingSchoolName ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  Save
-                </Button>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="school-name">School Name</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="school-name"
+                    type="text"
+                    placeholder="Enter school name"
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button 
+                    onClick={handleSaveSchoolName}
+                    disabled={isSavingSchoolName || !schoolName.trim() || schoolName === currentSchool?.name}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {isSavingSchoolName ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Save
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Change the name of the school. This will be reflected throughout the application.
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Change the name of the school. This will be reflected throughout the application.
-              </p>
+
+              <div className="space-y-2">
+                <Label htmlFor="school-description">School Description</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="school-description"
+                    type="text"
+                    placeholder="Enter school description (optional)"
+                    value={schoolDescription}
+                    onChange={(e) => setSchoolDescription(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button 
+                    onClick={handleSaveSchoolDescription}
+                    disabled={isSavingSchoolDescription || schoolDescription === currentSchool?.description}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {isSavingSchoolDescription ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Save
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Add or change the school description. This will help with school identification.
+                </p>
+              </div>
             </div>
             
             <div className="bg-amber-50 p-4 rounded-lg">
@@ -548,7 +670,7 @@ const Settings = () => {
                 <div>
                   <h4 className="font-medium text-amber-900 mb-1">Important Note</h4>
                   <p className="text-sm text-amber-800">
-                    Changing the school name will update it everywhere in the application. Make sure this is intentional as it affects all users and reports.
+                    Changing the school name and description will update them everywhere in the application. Make sure this is intentional as it affects all users and reports.
                   </p>
                 </div>
               </div>
