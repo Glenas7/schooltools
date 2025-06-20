@@ -545,7 +545,7 @@ const Settings = () => {
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              Enter the URL of your Google Sheet containing student data.
+              Enter the URL of your Google Sheet containing student data. Remember you will need to grant at least read-only access to this email for us to be able to use its contents: schooltools@schooltools-459418.iam.gserviceaccount.com.
               {googleSheetUrl && (
                 <a 
                   href={googleSheetUrl} 
@@ -732,7 +732,7 @@ const Settings = () => {
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              Enter the URL of your Google Sheet containing lessons data for comparison.
+              Enter the URL of your Google Sheet containing lessons data for comparison. Remember you will need to grant at least read-only access to this email for us to be able to use its contents: schooltools@schooltools-459418.iam.gserviceaccount.com. 
               {lessonsGoogleSheetUrl && (
                 <a 
                   href={lessonsGoogleSheetUrl} 
