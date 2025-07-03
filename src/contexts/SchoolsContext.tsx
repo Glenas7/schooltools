@@ -99,8 +99,27 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setError(null);
 
     try {
+      // Check current session to ensure user is properly authenticated
+      let { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.log('Session invalid, attempting to refresh...');
+        
+        // Try to refresh the session
+        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError || !refreshedSession) {
+          throw new Error('Authentication session expired. Please log in again.');
+        }
+        
+        session = refreshedSession;
+        console.log('Session refreshed successfully');
+      }
+
       // Generate a random join code
       const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+      console.log('Creating school with user ID:', session.user.id, 'Join code:', joinCode);
 
       const { data, error: createError } = await supabase
         .from('schools')
@@ -114,22 +133,40 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .select()
         .single();
 
-      if (createError) throw createError;
+      if (createError) {
+        console.error('School creation error:', createError);
+        // Provide more specific error messages for common issues
+        if (createError.code === '42501') {
+          throw new Error('Authentication failed. Please refresh the page and try again.');
+        } else if (createError.code === '23505' && createError.message?.includes('join_code')) {
+          throw new Error('Generated join code already exists. Please try again.');
+        }
+        throw createError;
+      }
 
       const newSchool = data as School;
 
       // Add the creator as a superadmin of the school
-      console.log('About to create user_schools entry with role: superadmin for school:', newSchool.id);
+      // Note: This might be handled by the trigger, but we'll do it explicitly for safety
+      console.log('About to create user_schools entry with role: superadmin for school:', newSchool.id, 'User ID:', session.user.id);
       const { error: userSchoolError } = await supabase
         .from('user_schools')
         .insert({
-          user_id: user.id,
+          user_id: session.user.id, // Use session user ID instead of user.id for consistency
           school_id: newSchool.id,
           role: 'superadmin',
           active: true
         });
 
-      if (userSchoolError) throw userSchoolError;
+      if (userSchoolError) {
+        console.error('User school association error:', userSchoolError);
+        // Don't throw here if the error is about duplicate entry (trigger might have already created it)
+        if (userSchoolError.code !== '23505') {
+          throw userSchoolError;
+        } else {
+          console.log('User school association already exists (likely created by trigger)');
+        }
+      }
       
       console.log('User school entry created successfully');
       
@@ -156,6 +193,22 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setError(null);
 
     try {
+      // Check current session to ensure user is properly authenticated
+      let { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.log('Session invalid, attempting to refresh...');
+        
+        // Try to refresh the session
+        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError || !refreshedSession) {
+          throw new Error('Authentication session expired. Please log in again.');
+        }
+        
+        session = refreshedSession;
+        console.log('Session refreshed successfully');
+      }
       // First, find the school with the join code
       const { data: schoolData, error: schoolError } = await supabase
         .from('schools')
@@ -174,7 +227,7 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const { data: existingMembership } = await supabase
         .from('user_schools')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', session.user.id)
         .eq('school_id', school.id)
         .single();
 
@@ -183,10 +236,11 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       // Add the user as a teacher to the school
+      console.log('Adding user to school:', school.id, 'User ID:', session.user.id);
       const { error: userSchoolError } = await supabase
         .from('user_schools')
         .insert({
-          user_id: user.id,
+          user_id: session.user.id,
           school_id: school.id,
           role: 'teacher',
           active: true
