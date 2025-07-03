@@ -18,7 +18,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// Create the Supabase client with service role
+// Create the Supabase client with user auth for permission checks
 const createSupabaseClient = (req: Request) => {
   const authHeader = req.headers.get('Authorization');
   
@@ -31,6 +31,16 @@ const createSupabaseClient = (req: Request) => {
   
   return createClient(supabaseUrl, supabaseKey, {
     global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false }
+  });
+};
+
+// Create service role client that bypasses RLS
+const createServiceRoleClient = () => {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  
+  return createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false }
   });
 };
@@ -356,24 +366,57 @@ serve(async (req: Request) => {
     }
 
     // If this is a teacher and subjectIds are provided, add subject assignments
+    console.log('[Edge Function] Checking subject assignment conditions:', {
+      role: userData.role,
+      isTeacher: userData.role === 'teacher',
+      hasSubjectIds: !!userData.subjectIds,
+      subjectIdsLength: userData.subjectIds?.length || 0,
+      subjectIds: userData.subjectIds
+    });
+    
     if (userData.role === 'teacher' && userData.subjectIds && userData.subjectIds.length > 0) {
-      console.log('[Edge Function] Adding subject assignments:', userData.subjectIds);
+      console.log('[Edge Function] Adding subject assignments for teacher:', userId);
+      console.log('[Edge Function] Subject IDs to assign:', userData.subjectIds);
+      
       const subjectAssignments = userData.subjectIds.map(subjectId => ({
         teacher_id: userId,
         subject_id: subjectId,
         school_id: userData.school_id
       }));
+      
+      console.log('[Edge Function] Subject assignment records to insert:', subjectAssignments);
 
-      const { error: subjectAssignmentError } = await supabase
+      // Use service role client to bypass RLS for subject assignments
+      const serviceRoleSupabase = createServiceRoleClient();
+      console.log('[Edge Function] Using service role client for subject assignments');
+
+      const { data: insertData, error: subjectAssignmentError } = await serviceRoleSupabase
         .from('teachers_subjects')
-        .insert(subjectAssignments);
+        .insert(subjectAssignments)
+        .select();
+
+      console.log('[Edge Function] Subject assignment insert result:', {
+        data: insertData,
+        error: subjectAssignmentError,
+        errorDetails: subjectAssignmentError ? {
+          message: subjectAssignmentError.message,
+          details: subjectAssignmentError.details,
+          hint: subjectAssignmentError.hint,
+          code: subjectAssignmentError.code
+        } : null
+      });
 
       if (subjectAssignmentError) {
-        console.error('[Edge Function] Error assigning subjects:', subjectAssignmentError);
-        // Don't throw here - user is created, just subject assignment failed
+        console.error('[Edge Function] CRITICAL: Subject assignment failed:', subjectAssignmentError);
+        console.error('[Edge Function] Error details:', JSON.stringify(subjectAssignmentError, null, 2));
+        
+        // Still throw the error so we can see it in the response
+        throw new Error(`Subject assignment failed: ${subjectAssignmentError.message} (${subjectAssignmentError.code})`);
       } else {
-        console.log('[Edge Function] Subject assignments created successfully');
+        console.log('[Edge Function] Subject assignments created successfully:', insertData);
       }
+    } else {
+      console.log('[Edge Function] Skipping subject assignments - conditions not met');
     }
 
     // Return the created user data
