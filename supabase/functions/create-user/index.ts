@@ -93,6 +93,9 @@ serve(async (req: Request) => {
       console.log('[Edge Function] Attempting to parse JSON...');
       userData = JSON.parse(body);
       console.log('[Edge Function] Parsed user data successfully:', userData);
+      console.log('[Edge Function] userData.subjectIds type:', typeof userData.subjectIds);
+      console.log('[Edge Function] userData.subjectIds value:', userData.subjectIds);
+      console.log('[Edge Function] userData.subjectIds isArray:', Array.isArray(userData.subjectIds));
     } catch (parseError) {
       console.error('[Edge Function] JSON parsing error:', parseError);
       console.error('[Edge Function] Parse error details:', {
