@@ -410,11 +410,24 @@ const TeachersProvider: React.FC<{ children: React.ReactNode }> = ({ children })
           throw new Error(`Failed to create teacher: ${errorData}`);
         }
 
+        // Get the response data to have the created teacher info
+        const responseData = await response.json();
+
         await fetchTeachers();
         
-        // Return the newly created teacher (find in updated teachers array)
-        const newTeacher = teachers.find(t => t.email === teacherData.email);
-        return newTeacher || null;
+        // Return a minimal teacher object based on the successful response
+        // The UI only needs to know the operation succeeded for modal closing
+        const newTeacher: Teacher = {
+          id: responseData.id,
+          name: teacherData.name,
+          email: teacherData.email,
+          active: teacherData.active,
+          school_id: currentSchool.id,
+          subjectIds: teacherData.subjectIds || [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        return newTeacher;
       } catch (error) {
         setError(error as Error);
         throw error;
