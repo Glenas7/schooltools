@@ -386,10 +386,17 @@ const TeachersProvider: React.FC<{ children: React.ReactNode }> = ({ children })
           throw new Error('No school selected');
         }
 
+        // Get the user's session token
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          throw new Error('User session not found. Please log in again.');
+        }
+
         const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             ...teacherData,
