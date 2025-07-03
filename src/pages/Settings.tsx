@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useSchool } from '../contexts/SchoolContext';
 import { supabase } from '../lib/supabaseClient';
 import AdminUserManagement from '../components/settings/AdminUserManagement';
+import { useStudentNames } from '../hooks/useStudentNames';
 
 const Settings = () => {
   const { user } = useAuth();
@@ -25,6 +26,7 @@ const Settings = () => {
   const [comparisonResults, setComparisonResults] = useState<ComparisonResult | null>(null);
   const [aligningStatus, setAligningStatus] = useState<{ [key: string]: { loading: boolean; error: string | null; conflict: boolean; conflictMessage: string | null } }>({});
   const { toast } = useToast();
+  const { invalidateStudentNames, refreshStudentNames, isLoading: isLoadingStudents } = useStudentNames();
 
   // Google Sheet URL state
   const [googleSheetUrl, setGoogleSheetUrl] = useState(currentSchool?.google_sheet_url || '');
@@ -131,9 +133,12 @@ const Settings = () => {
 
       await refreshSchool();
       
+      // Invalidate student names cache to refresh with new Google Sheet data
+      invalidateStudentNames();
+      
       toast({
         title: "Google Sheet configuration updated",
-        description: "The Google Sheet settings have been saved successfully.",
+        description: "The Google Sheet settings have been saved successfully. Student data will refresh automatically.",
       });
     } catch (error) {
       console.error('Error updating Google Sheet configuration:', error);
@@ -601,13 +606,47 @@ const Settings = () => {
             </div>
           </div>
           
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <h4 className="font-medium text-blue-900 mb-2">Configuration Summary</h4>
-            <p className="text-sm text-blue-800">
-              Student names will be read from <strong>{googleSheetName || 'Sheet1'}</strong> 
-              {' '}in range <strong>{googleSheetRange || 'A2:A'}</strong>
-              {googleSheetUrl ? ' of your configured Google Sheet.' : '. Please configure a Google Sheet URL first.'}
-            </p>
+                      <div className="bg-blue-50 p-4 rounded-lg">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h4 className="font-medium text-blue-900 mb-2">Configuration Summary</h4>
+                <p className="text-sm text-blue-800">
+                  Student names will be read from <strong>{googleSheetName || 'Sheet1'}</strong> 
+                  {' '}in range <strong>{googleSheetRange || 'A2:A'}</strong>
+                  {googleSheetUrl ? ' of your configured Google Sheet.' : '. Please configure a Google Sheet URL first.'}
+                </p>
+              </div>
+              {googleSheetUrl && (
+                <Button 
+                  onClick={async () => {
+                    try {
+                      await refreshStudentNames();
+                      toast({
+                        title: "Student data refreshed",
+                        description: "Student names have been reloaded from Google Sheets.",
+                      });
+                    } catch (error) {
+                      toast({
+                        title: "Error",
+                        description: "Failed to refresh student data. Please check your Google Sheet configuration.",
+                        variant: "destructive"
+                      });
+                    }
+                  }}
+                  disabled={isLoadingStudents}
+                  size="sm"
+                  variant="outline"
+                  className="ml-4 flex-shrink-0"
+                >
+                  {isLoadingStudents ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Refresh Students
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

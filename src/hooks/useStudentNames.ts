@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabaseClient';
 import { useSchool } from '../contexts/SchoolContext';
 
@@ -58,20 +58,37 @@ const fetchStudentNames = async (schoolId: string | null): Promise<string[]> => 
 
 export function useStudentNames() {
   const { currentSchool } = useSchool();
+  const queryClient = useQueryClient();
   
   // Use React Query to fetch and cache student names
-  const { data: studentNames, isLoading, isError } = useQuery({
+  const { data: studentNames, isLoading, isError, refetch } = useQuery({
     queryKey: ['studentNames', currentSchool?.id],
     queryFn: () => fetchStudentNames(currentSchool?.id || null),
-    staleTime: 1000 * 60 * 60, // 1 hour - data considered fresh for an hour
+    staleTime: 1000 * 60 * 5, // Reduced to 5 minutes for faster updates
     gcTime: 1000 * 60 * 60 * 24, // 24 hours - keep in cache for a day
     enabled: !!currentSchool, // Only run when we have a current school
   });
+  
+  // Function to invalidate and refresh student names cache
+  const invalidateStudentNames = () => {
+    if (currentSchool?.id) {
+      queryClient.invalidateQueries({
+        queryKey: ['studentNames', currentSchool.id]
+      });
+    }
+  };
+  
+  // Function to force refetch student names
+  const refreshStudentNames = async () => {
+    return await refetch();
+  };
   
   return {
     studentNames: studentNames || MOCK_STUDENT_NAMES,
     isLoading,
     isError,
+    invalidateStudentNames,
+    refreshStudentNames,
   };
 }
 
