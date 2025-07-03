@@ -103,8 +103,6 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       let { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError || !session) {
-        console.log('Session invalid, attempting to refresh...');
-        
         // Try to refresh the session
         const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
         
@@ -113,18 +111,9 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
         
         session = refreshedSession;
-        console.log('Session refreshed successfully');
       }
 
       // Ensure the session is properly set on the Supabase client
-      console.log('Setting session on Supabase client...');
-      console.log('Session details:', {
-        user_id: session.user.id,
-        access_token_length: session.access_token.length,
-        refresh_token_length: session.refresh_token.length,
-        expires_at: session.expires_at
-      });
-      
       const { error: setSessionError } = await supabase.auth.setSession({
         access_token: session.access_token,
         refresh_token: session.refresh_token
@@ -135,21 +124,8 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         throw new Error('Failed to authenticate with server. Please try again.');
       }
 
-      // Debug: Test authentication context
-      console.log('Testing authentication context...');
-      try {
-        const { data: authDebug, error: authDebugError } = await supabase
-          .rpc('debug_auth_context');
-        
-        console.log('Auth debug result:', authDebug, 'Error:', authDebugError);
-      } catch (debugError) {
-        console.error('Debug function failed:', debugError);
-      }
-
       // Generate a random join code
       const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-      console.log('Creating school with user ID:', session.user.id, 'Join code:', joinCode);
 
       const { data, error: createError } = await supabase
         .from('schools')
@@ -175,9 +151,6 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       const newSchool = data as School;
-
-      console.log('School created successfully:', newSchool.id);
-      console.log('Trigger should have automatically added user as superadmin');
       
       // Refresh the schools list to include the new school
       await fetchUserSchools();
@@ -206,8 +179,6 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       let { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError || !session) {
-        console.log('Session invalid, attempting to refresh...');
-        
         // Try to refresh the session
         const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
         
@@ -216,11 +187,9 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
         
         session = refreshedSession;
-        console.log('Session refreshed successfully');
       }
 
       // Ensure the session is properly set on the Supabase client
-      console.log('Setting session on Supabase client...');
       const { error: setSessionError } = await supabase.auth.setSession({
         access_token: session.access_token,
         refresh_token: session.refresh_token
@@ -258,7 +227,6 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       // Add the user as a teacher to the school
-      console.log('Adding user to school:', school.id, 'User ID:', session.user.id);
       const { error: userSchoolError } = await supabase
         .from('user_schools')
         .insert({
