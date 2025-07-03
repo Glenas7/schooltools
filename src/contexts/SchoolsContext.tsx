@@ -118,6 +118,13 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // Ensure the session is properly set on the Supabase client
       console.log('Setting session on Supabase client...');
+      console.log('Session details:', {
+        user_id: session.user.id,
+        access_token_length: session.access_token.length,
+        refresh_token_length: session.refresh_token.length,
+        expires_at: session.expires_at
+      });
+      
       const { error: setSessionError } = await supabase.auth.setSession({
         access_token: session.access_token,
         refresh_token: session.refresh_token
@@ -126,6 +133,17 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (setSessionError) {
         console.error('Error setting session on client:', setSessionError);
         throw new Error('Failed to authenticate with server. Please try again.');
+      }
+
+      // Debug: Test authentication context
+      console.log('Testing authentication context...');
+      try {
+        const { data: authDebug, error: authDebugError } = await supabase
+          .rpc('debug_auth_context');
+        
+        console.log('Auth debug result:', authDebug, 'Error:', authDebugError);
+      } catch (debugError) {
+        console.error('Debug function failed:', debugError);
       }
 
       // Generate a random join code
