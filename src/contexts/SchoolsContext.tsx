@@ -116,6 +116,18 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.log('Session refreshed successfully');
       }
 
+      // Ensure the session is properly set on the Supabase client
+      console.log('Setting session on Supabase client...');
+      const { error: setSessionError } = await supabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token
+      });
+      
+      if (setSessionError) {
+        console.error('Error setting session on client:', setSessionError);
+        throw new Error('Failed to authenticate with server. Please try again.');
+      }
+
       // Generate a random join code
       const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -146,29 +158,8 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const newSchool = data as School;
 
-      // Add the creator as a superadmin of the school
-      // Note: This might be handled by the trigger, but we'll do it explicitly for safety
-      console.log('About to create user_schools entry with role: superadmin for school:', newSchool.id, 'User ID:', session.user.id);
-      const { error: userSchoolError } = await supabase
-        .from('user_schools')
-        .insert({
-          user_id: session.user.id, // Use session user ID instead of user.id for consistency
-          school_id: newSchool.id,
-          role: 'superadmin',
-          active: true
-        });
-
-      if (userSchoolError) {
-        console.error('User school association error:', userSchoolError);
-        // Don't throw here if the error is about duplicate entry (trigger might have already created it)
-        if (userSchoolError.code !== '23505') {
-          throw userSchoolError;
-        } else {
-          console.log('User school association already exists (likely created by trigger)');
-        }
-      }
-      
-      console.log('User school entry created successfully');
+      console.log('School created successfully:', newSchool.id);
+      console.log('Trigger should have automatically added user as superadmin');
       
       // Refresh the schools list to include the new school
       await fetchUserSchools();
@@ -209,6 +200,19 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         session = refreshedSession;
         console.log('Session refreshed successfully');
       }
+
+      // Ensure the session is properly set on the Supabase client
+      console.log('Setting session on Supabase client...');
+      const { error: setSessionError } = await supabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token
+      });
+      
+      if (setSessionError) {
+        console.error('Error setting session on client:', setSessionError);
+        throw new Error('Failed to authenticate with server. Please try again.');
+      }
+
       // First, find the school with the join code
       const { data: schoolData, error: schoolError } = await supabase
         .from('schools')
