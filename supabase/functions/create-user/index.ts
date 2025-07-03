@@ -35,15 +35,7 @@ const createSupabaseClient = (req: Request) => {
   });
 };
 
-// Create service role client that bypasses RLS
-const createServiceRoleClient = () => {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  
-  return createClient(supabaseUrl, supabaseKey, {
-    auth: { persistSession: false }
-  });
-};
+
 
 serve(async (req: Request) => {
   console.log('[Edge Function] create-user called with method:', req.method);
@@ -386,11 +378,7 @@ serve(async (req: Request) => {
       
       console.log('[Edge Function] Subject assignment records to insert:', subjectAssignments);
 
-      // Use service role client to bypass RLS for subject assignments
-      const serviceRoleSupabase = createServiceRoleClient();
-      console.log('[Edge Function] Using service role client for subject assignments');
-
-      const { data: insertData, error: subjectAssignmentError } = await serviceRoleSupabase
+      const { data: insertData, error: subjectAssignmentError } = await supabase
         .from('teachers_subjects')
         .insert(subjectAssignments)
         .select();
