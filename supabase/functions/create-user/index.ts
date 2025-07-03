@@ -8,7 +8,7 @@ type CreateUserRequest = {
   name: string;
   school_id: string;
   role: 'admin' | 'teacher' | 'superadmin';
-  subject_ids?: string[];
+  subjectIds?: string[];
 };
 
 // CORS headers
@@ -355,10 +355,10 @@ serve(async (req: Request) => {
       console.log('[Edge Function] User added to school successfully');
     }
 
-    // If this is a teacher and subject_ids are provided, add subject assignments
-    if (userData.role === 'teacher' && userData.subject_ids && userData.subject_ids.length > 0) {
-      console.log('[Edge Function] Adding subject assignments:', userData.subject_ids);
-      const subjectAssignments = userData.subject_ids.map(subjectId => ({
+    // If this is a teacher and subjectIds are provided, add subject assignments
+    if (userData.role === 'teacher' && userData.subjectIds && userData.subjectIds.length > 0) {
+      console.log('[Edge Function] Adding subject assignments:', userData.subjectIds);
+      const subjectAssignments = userData.subjectIds.map(subjectId => ({
         teacher_id: userId,
         subject_id: subjectId,
         school_id: userData.school_id
@@ -383,7 +383,7 @@ serve(async (req: Request) => {
       email: userData.email,
       active: true,
       role: userData.role,
-      subject_ids: userData.subject_ids || []
+      subject_ids: userData.subjectIds || []
     };
 
     console.log('[Edge Function] Returning success response:', responseData);

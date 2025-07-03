@@ -45,12 +45,33 @@ const SchoolNavbar = () => {
     <nav className="border-b bg-white shadow-sm">
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:h-16">
+          {/* Left side: Logo + School Info */}
           <div className="flex items-center justify-between py-3 sm:py-0">
-            {/* Logo */}
-            <Link to="/" className="flex items-center">
-              <GraduationCap className="h-8 w-8 text-primary" />
-              <span className="ml-2 text-xl font-bold text-gray-900">School Scheduler</span>
-            </Link>
+            <div className="flex items-center space-x-6">
+              {/* Logo */}
+              <Link to="/" className="flex items-center">
+                <GraduationCap className="h-8 w-8 text-primary" />
+                <span className="ml-2 text-xl font-bold text-gray-900">School Scheduler</span>
+              </Link>
+
+              {/* Current School - Same row on desktop */}
+              {currentSchool && (
+                <div className="hidden sm:flex items-center">
+                  <Building2 className="h-5 w-5 text-muted-foreground mr-2" />
+                  <span className="text-lg font-semibold text-gray-900">{currentSchool.name}</span>
+                  {userRole === 'superadmin' && (
+                    <span className="ml-2 px-2 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full">
+                      Super Admin
+                    </span>
+                  )}
+                  {userRole === 'admin' && (
+                    <span className="ml-2 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                      Admin
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* User Menu - Mobile Only */}
             <div className="sm:hidden">
@@ -76,9 +97,9 @@ const SchoolNavbar = () => {
             </div>
           </div>
 
-          {/* Current School - Second row on mobile */}
+          {/* Current School - Second row on mobile only */}
           {currentSchool && (
-            <div className="flex items-center py-2 sm:py-0 sm:ml-8">
+            <div className="flex sm:hidden items-center py-2">
               <Building2 className="h-5 w-5 text-muted-foreground mr-2" />
               <span className="text-lg font-semibold text-gray-900">{currentSchool.name}</span>
               {userRole === 'superadmin' && (
@@ -94,7 +115,7 @@ const SchoolNavbar = () => {
             </div>
           )}
 
-          {/* Navigation Links and Desktop User Menu */}
+          {/* Right side: Navigation Links and Desktop User Menu */}
           <div className="flex items-center justify-between py-3 sm:py-0 sm:space-x-4">
             {/* Navigation Links */}
             <div className="flex items-center space-x-2 sm:space-x-4">
