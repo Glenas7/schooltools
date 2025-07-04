@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import { Teacher } from '../../types';
 import { useSubjects } from '../../contexts/SubjectsContext';
 import { useSchool } from '../../contexts/SchoolContext';
@@ -23,6 +23,7 @@ interface TeacherFormProps {
   onClose: () => void;
   onSave: (teacher: TeacherFormData) => void; // Use TeacherFormData here
   teacher?: Teacher; // This is the full Teacher object for editing
+  loading?: boolean;
 }
 
 // Default form data based on TeacherFormData
@@ -33,7 +34,7 @@ const defaultTeacherFormData: TeacherFormData = {
   subjectIds: []
 };
 
-const TeacherForm = ({ isOpen, onClose, onSave, teacher }: TeacherFormProps) => {
+const TeacherForm = ({ isOpen, onClose, onSave, teacher, loading }: TeacherFormProps) => {
   const [formData, setFormData] = useState<TeacherFormData>(defaultTeacherFormData);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { subjects } = useSubjects();
@@ -257,8 +258,15 @@ const TeacherForm = ({ isOpen, onClose, onSave, teacher }: TeacherFormProps) => 
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={subjects.length === 0}>
-              {teacher ? 'Update' : 'Add'} Teacher
+            <Button type="submit" disabled={subjects.length === 0 || loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {teacher ? 'Updating...' : 'Adding...'}
+                </>
+              ) : (
+                `${teacher ? 'Update' : 'Add'} Teacher`
+              )}
             </Button>
           </DialogFooter>
         </form>

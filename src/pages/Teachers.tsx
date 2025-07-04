@@ -15,6 +15,7 @@ const Teachers = () => {
   const { currentSchool, isSchoolAdmin } = useSchool();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | undefined>(undefined);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
   if (!currentSchool) {
@@ -76,6 +77,7 @@ const Teachers = () => {
   };
   
   const handleSaveTeacher = async (dataFromForm: TeacherFormData) => {
+    setIsSubmitting(true);
     try {
       if (dataFromForm.id) {
         // Editing existing teacher
@@ -145,6 +147,8 @@ const Teachers = () => {
         description: error instanceof Error ? error.message : "Failed to save teacher. The email may already be in use.",
         variant: "destructive"
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
@@ -175,6 +179,7 @@ const Teachers = () => {
         onClose={() => setIsFormOpen(false)}
         onSave={handleSaveTeacher}
         teacher={editingTeacher}
+        loading={isSubmitting}
       />
     </div>
   );
