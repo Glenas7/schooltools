@@ -518,11 +518,209 @@ const Settings = () => {
         </Card>
       )}
       
-      {/* School Configuration Section */}
+      {/* School Name Management Section - Only for Super Admins */}
+      {userRole === 'superadmin' && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Building2 className="h-5 w-5 mr-2" />
+              School Management
+            </CardTitle>
+            <CardDescription>Manage basic school information (Super Admin only)</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="school-name">School Name</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="school-name"
+                    type="text"
+                    placeholder="Enter school name"
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button 
+                    onClick={handleSaveSchoolName}
+                    disabled={isSavingSchoolName || !schoolName.trim() || schoolName === currentSchool?.name}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {isSavingSchoolName ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Save
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Change the name of the school. This will be reflected throughout the application.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="school-description">School Description</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="school-description"
+                    type="text"
+                    placeholder="Enter school description (optional)"
+                    value={schoolDescription}
+                    onChange={(e) => setSchoolDescription(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button 
+                    onClick={handleSaveSchoolDescription}
+                    disabled={isSavingSchoolDescription || schoolDescription === currentSchool?.description}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {isSavingSchoolDescription ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Save
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Add or change the school description. This will help with school identification.
+                </p>
+              </div>
+            </div>
+            
+            <div className="bg-amber-50 p-4 rounded-lg">
+              <div className="flex items-start">
+                <AlertTriangle className="h-5 w-5 mr-2 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-amber-900 mb-1">Important Note</h4>
+                  <p className="text-sm text-amber-800">
+                    Changing the school name and description will update them everywhere in the application. Make sure this is intentional as it affects all users and reports.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* School Year Management Section */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>School Configuration</CardTitle>
-          <CardDescription>Configure basic settings for {currentSchool?.name}</CardDescription>
+          <CardTitle className="flex items-center">
+            <Calendar className="h-5 w-5 mr-2" />
+            School Year Management
+          </CardTitle>
+          <CardDescription>Set school year end date and bulk update lesson schedules</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="school-year-end-date">School Year End Date</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="school-year-end-date"
+                  type="date"
+                  value={schoolYearEndDate}
+                  onChange={(e) => setSchoolYearEndDate(e.target.value)}
+                  className="flex-1"
+                />
+                <Button 
+                  onClick={handleSaveSchoolYearEndDate}
+                  disabled={isSavingSchoolYear}
+                  size="sm"
+                  variant="outline"
+                >
+                  {isSavingSchoolYear ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Set the last day of the school year (inclusive). This will be used to calculate lesson end dates.
+              </p>
+            </div>
+
+            {schoolYearEndDate && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">Bulk Update Lesson End Dates</h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-blue-800">
+                      Lessons without end dates: 
+                    </span>
+                    <span className="font-semibold text-blue-900">
+                      {isFetchingLessonCount ? (
+                        <Loader2 className="h-4 w-4 animate-spin inline" />
+                      ) : (
+                        lessonsWithoutEndDateCount !== null ? lessonsWithoutEndDateCount : 'Unknown'
+                      )}
+                    </span>
+                  </div>
+                  
+                  {lessonsWithoutEndDateCount !== null && lessonsWithoutEndDateCount > 0 && (
+                    <>
+                      <p className="text-sm text-blue-800">
+                        Click the button below to set end date to <strong>{new Date(new Date(schoolYearEndDate).getTime() + 24*60*60*1000).toLocaleDateString('en-GB')}</strong> for all lessons that don't have an end date yet.
+                      </p>
+                      <p className="text-xs text-blue-700">
+                        Note: End dates are exclusive, so this sets the end date to 1 day after the school year end to make the school year end date inclusive.
+                      </p>
+                      <Button 
+                        onClick={handleBulkUpdateLessonEndDates}
+                        disabled={isUpdatingLessonEndDates || !schoolYearEndDate}
+                        className="w-full"
+                        variant="default"
+                      >
+                        {isUpdatingLessonEndDates ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Updating lesson end dates...
+                          </>
+                        ) : (
+                          <>
+                            <Calendar className="h-4 w-4 mr-2" />
+                            Apply End Date to {lessonsWithoutEndDateCount} Lessons
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
+                  
+                  {lessonsWithoutEndDateCount === 0 && (
+                    <div className="flex items-center text-green-700">
+                      <Check className="h-4 w-4 mr-2" />
+                      All lessons already have end dates
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!schoolYearEndDate && (
+              <div className="bg-amber-50 p-4 rounded-lg">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 mr-2 text-amber-600" />
+                  <span className="text-sm text-amber-800">
+                    Set a school year end date to enable bulk updating of lesson end dates.
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Student Google Sheet Configuration Section */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Students Google Sheet Configuration</CardTitle>
+          <CardDescription>Configure student google sheet settings for {currentSchool?.name}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
@@ -651,94 +849,6 @@ const Settings = () => {
         </CardContent>
       </Card>
 
-      {/* School Name Management Section - Only for Super Admins */}
-      {userRole === 'superadmin' && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Building2 className="h-5 w-5 mr-2" />
-              School Management
-            </CardTitle>
-            <CardDescription>Manage basic school information (Super Admin only)</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="school-name">School Name</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="school-name"
-                    type="text"
-                    placeholder="Enter school name"
-                    value={schoolName}
-                    onChange={(e) => setSchoolName(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button 
-                    onClick={handleSaveSchoolName}
-                    disabled={isSavingSchoolName || !schoolName.trim() || schoolName === currentSchool?.name}
-                    size="sm"
-                    variant="outline"
-                  >
-                    {isSavingSchoolName ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
-                    Save
-                  </Button>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Change the name of the school. This will be reflected throughout the application.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="school-description">School Description</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="school-description"
-                    type="text"
-                    placeholder="Enter school description (optional)"
-                    value={schoolDescription}
-                    onChange={(e) => setSchoolDescription(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button 
-                    onClick={handleSaveSchoolDescription}
-                    disabled={isSavingSchoolDescription || schoolDescription === currentSchool?.description}
-                    size="sm"
-                    variant="outline"
-                  >
-                    {isSavingSchoolDescription ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
-                    Save
-                  </Button>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Add or change the school description. This will help with school identification.
-                </p>
-              </div>
-            </div>
-            
-            <div className="bg-amber-50 p-4 rounded-lg">
-              <div className="flex items-start">
-                <AlertTriangle className="h-5 w-5 mr-2 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-medium text-amber-900 mb-1">Important Note</h4>
-                  <p className="text-sm text-amber-800">
-                    Changing the school name and description will update them everywhere in the application. Make sure this is intentional as it affects all users and reports.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Lessons Google Sheet Configuration Section */}
       <Card className="mb-6">
         <CardHeader>
@@ -843,116 +953,6 @@ const Settings = () => {
           <Button onClick={handleCheckLessons}>
             Check Lessons vs Google Sheets
           </Button>
-        </CardContent>
-      </Card>
-
-      {/* School Year Management Section */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Calendar className="h-5 w-5 mr-2" />
-            School Year Management
-          </CardTitle>
-          <CardDescription>Set school year end date and bulk update lesson schedules</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="school-year-end-date">School Year End Date</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="school-year-end-date"
-                  type="date"
-                  value={schoolYearEndDate}
-                  onChange={(e) => setSchoolYearEndDate(e.target.value)}
-                  className="flex-1"
-                />
-                <Button 
-                  onClick={handleSaveSchoolYearEndDate}
-                  disabled={isSavingSchoolYear}
-                  size="sm"
-                  variant="outline"
-                >
-                  {isSavingSchoolYear ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  Save
-                </Button>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Set the last day of the school year (inclusive). This will be used to calculate lesson end dates.
-              </p>
-            </div>
-
-            {schoolYearEndDate && (
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">Bulk Update Lesson End Dates</h4>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-blue-800">
-                      Lessons without end dates: 
-                    </span>
-                    <span className="font-semibold text-blue-900">
-                      {isFetchingLessonCount ? (
-                        <Loader2 className="h-4 w-4 animate-spin inline" />
-                      ) : (
-                        lessonsWithoutEndDateCount !== null ? lessonsWithoutEndDateCount : 'Unknown'
-                      )}
-                    </span>
-                  </div>
-                  
-                  {lessonsWithoutEndDateCount !== null && lessonsWithoutEndDateCount > 0 && (
-                    <>
-                      <p className="text-sm text-blue-800">
-                        Click the button below to set end date to <strong>{new Date(new Date(schoolYearEndDate).getTime() + 24*60*60*1000).toLocaleDateString('en-GB')}</strong> for all lessons that don't have an end date yet.
-                      </p>
-                      <p className="text-xs text-blue-700">
-                        Note: End dates are exclusive, so this sets the end date to 1 day after the school year end to make the school year end date inclusive.
-                      </p>
-                      <Button 
-                        onClick={handleBulkUpdateLessonEndDates}
-                        disabled={isUpdatingLessonEndDates || !schoolYearEndDate}
-                        className="w-full"
-                        variant="default"
-                      >
-                        {isUpdatingLessonEndDates ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Updating lesson end dates...
-                          </>
-                        ) : (
-                          <>
-                            <Calendar className="h-4 w-4 mr-2" />
-                            Apply End Date to {lessonsWithoutEndDateCount} Lessons
-                          </>
-                        )}
-                      </Button>
-                    </>
-                  )}
-                  
-                  {lessonsWithoutEndDateCount === 0 && (
-                    <div className="flex items-center text-green-700">
-                      <Check className="h-4 w-4 mr-2" />
-                      All lessons already have end dates
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {!schoolYearEndDate && (
-              <div className="bg-amber-50 p-4 rounded-lg">
-                <div className="flex items-center">
-                  <AlertTriangle className="h-5 w-5 mr-2 text-amber-600" />
-                  <span className="text-sm text-amber-800">
-                    Set a school year end date to enable bulk updating of lesson end dates.
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
         </CardContent>
       </Card>
 
