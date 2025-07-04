@@ -98,7 +98,7 @@ const SchoolSelect = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-        <Card className="w-full max-w-md shadow-xl">
+        <Card className="w-full max-w-md shadow-xl bg-white/90 backdrop-blur-sm">
           <CardContent className="flex items-center justify-center py-8">
             <Loader2 className="h-8 w-8 animate-spin mr-2" />
             <span>Loading your schools...</span>
@@ -109,30 +109,29 @@ const SchoolSelect = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       {/* Header */}
-      <header className="max-w-4xl mx-auto mb-8">
+      <header className="w-full px-6 py-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
             <GraduationCap className="h-8 w-8 text-primary" />
             <span className="ml-2 text-2xl font-bold text-gray-900">School Scheduler</span>
           </div>
           <div className="text-right">
-            <p className="font-medium text-gray-900">Welcome back, {user.name}!</p>
-            <p className="text-sm text-gray-600">Select a school to continue</p>
+            <p className="font-medium text-gray-900">Hello, {user.name}!</p>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto">
+      <div className="px-6 pb-6">
         {schools.length === 0 ? (
           // No schools - show welcome message and options
-          <div className="text-center">
+          <div className="text-center max-w-4xl mx-auto">
             <div className="mb-8">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to School Scheduler!</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Get Started</h1>
               <p className="text-lg text-gray-600">
-                To get started, you can either create a new school or join an existing one
+                Create a new school or join an existing one to begin scheduling
               </p>
             </div>
 
@@ -183,15 +182,8 @@ const SchoolSelect = () => {
         ) : (
           // Has schools - show school selection
           <>
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Your Schools</h1>
-              <p className="text-lg text-gray-600">
-                Choose a school to access its scheduling system
-              </p>
-            </div>
-
             {/* Schools Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 mb-8 max-w-7xl mx-auto">
               {schools.map((school) => (
                 <Card 
                   key={school.id} 
@@ -256,33 +248,35 @@ const SchoolSelect = () => {
             </div>
 
             {/* Add School Options */}
-            <Card className="bg-gray-50 border-dashed border-2 border-gray-300">
-              <CardContent className="py-8">
-                <div className="text-center">
-                  <Plus className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    Need access to another school?
-                  </h3>
-                  <p className="text-gray-600 mb-6">
-                    You can create a new school or join an existing one
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                    <Link to="/school-setup">
-                      <Button variant="outline" className="w-full sm:w-auto">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Create New School
-                      </Button>
-                    </Link>
-                    <Link to="/school-setup">
-                      <Button variant="outline" className="w-full sm:w-auto">
-                        <Users className="h-4 w-4 mr-2" />
-                        Join Existing School
-                      </Button>
-                    </Link>
+            <div className="max-w-2xl mx-auto">
+              <Card className="bg-white/70 backdrop-blur-sm border-dashed border-2 border-primary/30">
+                <CardContent className="py-8">
+                  <div className="text-center">
+                    <Plus className="h-12 w-12 text-primary/60 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      Need access to another school?
+                    </h3>
+                    <p className="text-gray-600 mb-6">
+                      You can create a new school or join an existing one
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                      <Link to="/school-setup">
+                        <Button variant="outline" className="w-full sm:w-auto">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Create New School
+                        </Button>
+                      </Link>
+                      <Link to="/school-setup">
+                        <Button variant="outline" className="w-full sm:w-auto">
+                          <Users className="h-4 w-4 mr-2" />
+                          Join Existing School
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </>
         )}
       </div>
