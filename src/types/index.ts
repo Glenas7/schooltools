@@ -26,6 +26,7 @@ export interface School {
   school_year_end_date?: string; // YYYY-MM-DD format
   settings?: Record<string, any>;
   active: boolean;
+  deleted: boolean;
   created_at: string;
   updated_at: string;
 }

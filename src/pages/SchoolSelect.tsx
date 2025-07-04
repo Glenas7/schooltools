@@ -1,17 +1,24 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchools } from '../contexts/SchoolsContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { GraduationCap, Building2, Users, Crown, Plus, Loader2, Shield } from 'lucide-react';
+import { GraduationCap, Building2, Users, Crown, Plus, Loader2, Shield, Trash2 } from 'lucide-react';
 
 const SchoolSelect = () => {
   const { user, isAuthenticated, updateLastAccessedSchool } = useAuth();
-  const { schools, fetchUserSchools, loading } = useSchools();
+  const { schools, fetchUserSchools, loading, deleteSchool, canDeleteSchool } = useSchools();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Delete modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [errorModalOpen, setErrorModalOpen] = useState(false);
+  const [schoolToDelete, setSchoolToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -32,6 +39,52 @@ const SchoolSelect = () => {
       // Continue with navigation even if updating preference fails
     }
     navigate(`/school/${schoolId}/schedule`);
+  };
+
+  const handleDeleteClick = async (school: { id: string; name: string }) => {
+    setSchoolToDelete(school);
+    
+    // Check if user can delete this school
+    const canDelete = await canDeleteSchool(school.id);
+    
+    if (canDelete) {
+      setDeleteModalOpen(true);
+    } else {
+      setErrorModalOpen(true);
+    }
+  };
+
+  const handleDeleteSchool = async () => {
+    if (!schoolToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const success = await deleteSchool(schoolToDelete.id);
+      
+      if (success) {
+        toast({
+          title: "School deleted",
+          description: `${schoolToDelete.name} has been successfully deleted.`,
+        });
+        setDeleteModalOpen(false);
+        setSchoolToDelete(null);
+      } else {
+        toast({
+          title: "Delete failed",
+          description: "Failed to delete the school. Please try again.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting school:', error);
+      toast({
+        title: "Delete failed",
+        description: "An error occurred while deleting the school.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (!user) {
@@ -148,22 +201,37 @@ const SchoolSelect = () => {
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <Building2 className="h-8 w-8 text-primary" />
-                      <div className="flex items-center gap-1 text-xs">
-                        {school.userRole === 'superadmin' ? (
-                          <>
-                            <Shield className="h-3 w-3 text-purple-500" />
-                            <span className="text-purple-600 font-medium">Super Admin</span>
-                          </>
-                        ) : school.userRole === 'admin' ? (
-                          <>
-                            <Crown className="h-3 w-3 text-yellow-500" />
-                            <span className="text-yellow-600 font-medium">Admin</span>
-                          </>
-                        ) : (
-                          <>
-                            <Users className="h-3 w-3 text-blue-500" />
-                            <span className="text-blue-600 font-medium">Teacher</span>
-                          </>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 text-xs">
+                          {school.userRole === 'superadmin' ? (
+                            <>
+                              <Shield className="h-3 w-3 text-purple-500" />
+                              <span className="text-purple-600 font-medium">Super Admin</span>
+                            </>
+                          ) : school.userRole === 'admin' ? (
+                            <>
+                              <Crown className="h-3 w-3 text-yellow-500" />
+                              <span className="text-yellow-600 font-medium">Admin</span>
+                            </>
+                          ) : (
+                            <>
+                              <Users className="h-3 w-3 text-blue-500" />
+                              <span className="text-blue-600 font-medium">Teacher</span>
+                            </>
+                          )}
+                        </div>
+                        {school.userRole === 'superadmin' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick({ id: school.id, name: school.name });
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -218,6 +286,71 @@ const SchoolSelect = () => {
           </>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete School</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{schoolToDelete?.name}</strong>? 
+              This action will permanently remove the school and all its associated data from the system.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setDeleteModalOpen(false);
+                setSchoolToDelete(null);
+              }}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteSchool}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete School
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Error Modal */}
+      <Dialog open={errorModalOpen} onOpenChange={setErrorModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cannot Delete School</DialogTitle>
+            <DialogDescription>
+              This school cannot be deleted because there are other administrators. 
+              Schools can only be deleted when you are the sole administrator.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button 
+              onClick={() => {
+                setErrorModalOpen(false);
+                setSchoolToDelete(null);
+              }}
+            >
+              Understood
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

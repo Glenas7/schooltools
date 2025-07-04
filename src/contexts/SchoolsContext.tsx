@@ -12,6 +12,7 @@ interface SchoolsContextType {
   joinSchool: (joinCode: string) => Promise<School | null>;
   updateSchool: (schoolId: string, updates: Partial<School>) => Promise<School | null>;
   deleteSchool: (schoolId: string) => Promise<boolean>;
+  canDeleteSchool: (schoolId: string) => Promise<boolean>;
 }
 
 const SchoolsContext = createContext<SchoolsContextType | undefined>(undefined);
@@ -61,9 +62,10 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       
       const { data: schoolsData, error: schoolsError } = await supabase
         .from('schools')
-        .select('id, name, description, google_sheet_url, join_code, settings, active, created_at, updated_at')
+        .select('id, name, description, google_sheet_url, join_code, settings, active, deleted, created_at, updated_at')
         .in('id', schoolIds)
-        .eq('active', true);
+        .eq('active', true)
+        .eq('deleted', false);
 
       if (schoolsError) throw schoolsError;
 
@@ -206,6 +208,7 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .select('*')
         .eq('join_code', joinCode.toUpperCase())
         .eq('active', true)
+        .eq('deleted', false)
         .single();
 
       if (schoolError || !schoolData) {
@@ -299,12 +302,16 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setError(null);
 
     try {
-      const { error: deleteError } = await supabase
-        .from('schools')
-        .delete()
-        .eq('id', schoolId);
+      const { data, error: deleteError } = await supabase
+        .rpc('delete_school_safely', { target_school_id: schoolId });
 
-      if (deleteError) throw deleteError;
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      if (!data) {
+        throw new Error('Failed to delete school. You may not be the only admin.');
+      }
 
       // Remove from local state
       setSchools(prev => prev.filter(school => school.id !== schoolId));
@@ -319,6 +326,27 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
+  const canDeleteSchool = async (schoolId: string): Promise<boolean> => {
+    if (!user) {
+      return false;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .rpc('can_user_delete_school', { target_school_id: schoolId });
+
+      if (error) {
+        console.error('Error checking school deletion permission:', error);
+        return false;
+      }
+
+      return data === true;
+    } catch (e) {
+      console.error('Error checking school deletion permission:', e);
+      return false;
+    }
+  };
+
   return (
     <SchoolsContext.Provider value={{
       schools,
@@ -328,7 +356,8 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       createSchool,
       joinSchool,
       updateSchool,
-      deleteSchool
+      deleteSchool,
+      canDeleteSchool
     }}>
       {children}
     </SchoolsContext.Provider>
