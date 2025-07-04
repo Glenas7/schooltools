@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { User, Mail, Lock, GraduationCap } from 'lucide-react';
+import { User, Mail, Lock, GraduationCap, Loader2, Check, X } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 
 const SignupForm = () => {
@@ -15,12 +15,47 @@ const SignupForm = () => {
     confirmPassword: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [emailValidation, setEmailValidation] = useState<{
+    isChecking: boolean;
+    isAvailable: boolean | null;
+    hasChecked: boolean;
+  }>({
+    isChecking: false,
+    isAvailable: null,
+    hasChecked: false
+  });
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Reset email validation when email changes
+    if (name === 'email') {
+      setEmailValidation({
+        isChecking: false,
+        isAvailable: null,
+        hasChecked: false
+      });
+    }
+  };
+
+  const handleEmailBlur = async () => {
+    const email = formData.email.trim();
+    
+    // Only check if email is valid format and not empty
+    if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailValidation(prev => ({ ...prev, isChecking: true }));
+      
+      const isAvailable = await checkEmailAvailability(email);
+      
+      setEmailValidation({
+        isChecking: false,
+        isAvailable,
+        hasChecked: true
+      });
+    }
   };
 
   const validateForm = () => {
@@ -72,6 +107,26 @@ const SignupForm = () => {
     return true;
   };
 
+  const checkEmailAvailability = async (email: string): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase.rpc('check_email_availability', {
+        target_email: email
+      });
+
+      if (error) {
+        console.error('Error checking email availability:', error);
+        // If we can't check, allow the signup to proceed (better UX than blocking)
+        return true;
+      }
+
+      return data === true;
+    } catch (error) {
+      console.error('Exception checking email availability:', error);
+      // If we can't check, allow the signup to proceed
+      return true;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -80,6 +135,19 @@ const SignupForm = () => {
     setIsLoading(true);
 
     try {
+      // First, check if email is already in use
+      const emailAvailable = await checkEmailAvailability(formData.email);
+      
+      if (!emailAvailable) {
+        toast({
+          title: "Email already exists",
+          description: "An account with this email address already exists. Please use a different email or try signing in instead.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       // Create user account
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
@@ -91,7 +159,20 @@ const SignupForm = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        // Handle specific Supabase errors for duplicate emails
+        if (error.message?.includes('User already registered') || 
+            error.message?.includes('email address is already registered')) {
+          toast({
+            title: "Email already exists",
+            description: "An account with this email address already exists. Please use a different email or try signing in instead.",
+            variant: "destructive",
+          });
+        } else {
+          throw error;
+        }
+        return;
+      }
 
       if (data.user) {
         toast({
@@ -104,9 +185,24 @@ const SignupForm = () => {
       }
     } catch (error: any) {
       console.error('Signup error:', error);
+      
+      // Handle specific error messages for better UX
+      let errorMessage = "Failed to create account. Please try again.";
+      
+      if (error.message?.includes('User already registered') || 
+          error.message?.includes('email address is already registered')) {
+        errorMessage = "An account with this email address already exists. Please use a different email or try signing in instead.";
+      } else if (error.message?.includes('invalid email')) {
+        errorMessage = "Please enter a valid email address.";
+      } else if (error.message?.includes('password')) {
+        errorMessage = "Password must be at least 6 characters long.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Signup failed",
-        description: error.message || "Failed to create account. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -157,10 +253,40 @@ const SignupForm = () => {
                   placeholder="Enter your email address" 
                   value={formData.email} 
                   onChange={handleInputChange}
+                  onBlur={handleEmailBlur}
                   required
-                  className="w-full pl-10"
+                  className={`w-full pl-10 pr-10 ${
+                    emailValidation.hasChecked 
+                      ? emailValidation.isAvailable 
+                        ? 'border-green-500 focus:border-green-500' 
+                        : 'border-red-500 focus:border-red-500'
+                      : ''
+                  }`}
                 />
+                {/* Validation feedback icon */}
+                <div className="absolute right-3 top-3 h-4 w-4">
+                  {emailValidation.isChecking && (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                  {!emailValidation.isChecking && emailValidation.hasChecked && emailValidation.isAvailable && (
+                    <Check className="h-4 w-4 text-green-500" />
+                  )}
+                  {!emailValidation.isChecking && emailValidation.hasChecked && !emailValidation.isAvailable && (
+                    <X className="h-4 w-4 text-red-500" />
+                  )}
+                </div>
               </div>
+              {/* Validation message */}
+              {emailValidation.hasChecked && !emailValidation.isAvailable && (
+                <p className="text-sm text-red-500 mt-1">
+                  This email is already registered. Please use a different email or <Link to="/login" className="underline hover:text-red-600">sign in instead</Link>.
+                </p>
+              )}
+              {emailValidation.hasChecked && emailValidation.isAvailable && (
+                <p className="text-sm text-green-600 mt-1">
+                  Email is available ✓
+                </p>
+              )}
             </div>
             
             <div className="space-y-2">
@@ -197,8 +323,21 @@ const SignupForm = () => {
               </div>
             </div>
             
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Creating Account...' : 'Create Account'}
+            <Button 
+              type="submit" 
+              className="w-full" 
+              disabled={
+                isLoading || 
+                (emailValidation.hasChecked && !emailValidation.isAvailable) ||
+                emailValidation.isChecking
+              }
+            >
+              {isLoading 
+                ? 'Creating Account...' 
+                : emailValidation.isChecking 
+                  ? 'Checking email...'
+                  : 'Create Account'
+              }
             </Button>
           </form>
         </CardContent>

@@ -25,9 +25,35 @@ const LoginForm = () => {
     try {
       await login(email, password);
     } catch (error: any) {
+      console.error('Login error:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = "Invalid email or password.";
+      let errorTitle = "Login failed";
+      
+      if (error.message?.includes('Invalid login credentials') || 
+          error.message?.includes('invalid credentials')) {
+        errorMessage = "The email or password you entered is incorrect. Please check your credentials and try again.";
+      } else if (error.message?.includes('Email not confirmed')) {
+        errorTitle = "Email not verified";
+        errorMessage = "Please check your email and click the verification link before signing in.";
+      } else if (error.message?.includes('Too many requests')) {
+        errorTitle = "Too many attempts";
+        errorMessage = "Too many login attempts. Please wait a moment before trying again.";
+      } else if (error.message?.includes('User not found') || 
+                 error.message?.includes('email address is not registered')) {
+        errorTitle = "Account not found";
+        errorMessage = "No account found with this email address. Please check your email or create a new account.";
+      } else if (error.message?.includes('signup')) {
+        errorTitle = "Account setup incomplete";
+        errorMessage = "It looks like your account setup wasn't completed. Please try signing up again or contact support.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
-        title: "Login failed",
-        description: error.message || "Invalid email or password.",
+        title: errorTitle,
+        description: errorMessage,
         variant: "destructive",
       });
       setIsLoading(false);
