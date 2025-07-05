@@ -19,31 +19,35 @@ const BulkLocationAssignment = ({ allLessons, onLocationAssigned }: BulkLocation
   const [selectedLessonIds, setSelectedLessonIds] = useState<string[]>([]);
   const [lessonLocations, setLessonLocations] = useState<Record<string, string>>({});
   const { subjects } = useSubjects();
-  const { locations, assignLocationToMultipleLessons, loading, getLessonLocation } = useLocations();
+  const { locations, assignLocationToMultipleLessons, loading, getLessonLocationsBatch } = useLocations();
 
   // Fetch location data for all lessons
   useEffect(() => {
     const fetchLessonLocations = async () => {
-      const locationMap: Record<string, string> = {};
-      
-      for (const lesson of allLessons) {
-        try {
-          const location = await getLessonLocation(lesson.id);
-          if (location) {
-            locationMap[lesson.id] = location.name;
-          }
-        } catch (error) {
-          console.error(`Error fetching location for lesson ${lesson.id}:`, error);
-        }
+      if (allLessons.length === 0) {
+        setLessonLocations({});
+        return;
       }
-      
-      setLessonLocations(locationMap);
+
+      try {
+        const lessonIds = allLessons.map(lesson => lesson.id);
+        const locationMap = await getLessonLocationsBatch(lessonIds);
+        
+        // Convert Location objects to location names for display
+        const locationNameMap: Record<string, string> = {};
+        Object.entries(locationMap).forEach(([lessonId, location]) => {
+          locationNameMap[lessonId] = location.name;
+        });
+        
+        setLessonLocations(locationNameMap);
+      } catch (error) {
+        console.error('Error fetching lesson locations in batch:', error);
+        setLessonLocations({});
+      }
     };
 
-    if (allLessons.length > 0) {
-      fetchLessonLocations();
-    }
-  }, [allLessons, getLessonLocation]);
+    fetchLessonLocations();
+  }, [allLessons, getLessonLocationsBatch]);
 
   const getSubjectById = (subjectId: string) => {
     return subjects.find(subject => subject.id === subjectId);

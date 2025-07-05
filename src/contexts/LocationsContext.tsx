@@ -12,6 +12,7 @@ interface LocationsContextType {
   assignLocationToLesson: (lessonId: string, locationId: string) => Promise<void>;
   removeLocationFromLesson: (lessonId: string) => Promise<void>;
   getLessonLocation: (lessonId: string) => Promise<Location | null>;
+  getLessonLocationsBatch: (lessonIds: string[]) => Promise<Record<string, Location>>;
   getLessonsWithoutLocation: () => Promise<Lesson[]>;
   getAllLessons: () => Promise<Lesson[]>;
   assignLocationToMultipleLessons: (lessonIds: string[], locationId: string) => Promise<void>;
@@ -252,6 +253,49 @@ const LocationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     }
   };
 
+  const getLessonLocationsBatch = async (lessonIds: string[]): Promise<Record<string, Location>> => {
+    if (!currentSchool || lessonIds.length === 0) {
+      return {};
+    }
+
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('lesson_locations')
+        .select(`
+          lesson_id,
+          location_id,
+          locations (
+            id,
+            school_id,
+            name,
+            created_at,
+            updated_at
+          )
+        `)
+        .in('lesson_id', lessonIds);
+
+      if (fetchError) {
+        console.error('Error fetching lesson locations batch:', fetchError);
+        return {};
+      }
+
+      const locationMap: Record<string, Location> = {};
+      
+      if (data) {
+        for (const item of data) {
+          if (item.locations) {
+            locationMap[item.lesson_id] = item.locations as unknown as Location;
+          }
+        }
+      }
+
+      return locationMap;
+    } catch (e) {
+      console.error('Error fetching lesson locations batch:', e);
+      return {};
+    }
+  };
+
   const getLessonsWithoutLocation = async (): Promise<Lesson[]> => {
     if (!currentSchool) {
       console.log('[LocationsContext] getLessonsWithoutLocation: No current school');
@@ -425,6 +469,7 @@ const LocationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       assignLocationToLesson,
       removeLocationFromLesson,
       getLessonLocation,
+      getLessonLocationsBatch,
       getLessonsWithoutLocation,
       getAllLessons,
       assignLocationToMultipleLessons,
