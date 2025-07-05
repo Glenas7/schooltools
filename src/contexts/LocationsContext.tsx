@@ -239,7 +239,7 @@ const LocationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           )
         `)
         .eq('lesson_id', lessonId)
-        .single();
+        .maybeSingle();
 
       if (fetchError || !data || !data.locations) {
         return null;
