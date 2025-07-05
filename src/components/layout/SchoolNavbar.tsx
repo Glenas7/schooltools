@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { GraduationCap, Calendar, Users, BookOpen, Settings, LogOut, Building2, ChevronDown } from 'lucide-react';
+import { GraduationCap, Calendar, Users, BookOpen, MapPin, Settings, LogOut, Building2, ChevronDown } from 'lucide-react';
 
 const SchoolNavbar = () => {
   const { schoolId } = useParams<{ schoolId: string }>();
@@ -38,6 +38,7 @@ const SchoolNavbar = () => {
     { name: 'Schedule', href: `/school/${schoolId}/schedule`, icon: Calendar },
     { name: 'Teachers', href: `/school/${schoolId}/teachers`, icon: Users, adminOnly: true },
     { name: 'Subjects', href: `/school/${schoolId}/subjects`, icon: BookOpen, adminOnly: true },
+    { name: 'Locations', href: `/school/${schoolId}/locations`, icon: MapPin, adminOnly: true },
     { name: 'Settings', href: `/school/${schoolId}/settings`, icon: Settings, adminOnly: true },
   ];
 

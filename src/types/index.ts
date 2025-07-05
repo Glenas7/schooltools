@@ -89,6 +89,28 @@ export interface Lesson {
 
 export type LessonUnsaved = Omit<Lesson, 'id' | 'created_at' | 'updated_at'>;
 
+// Location type
+export interface Location {
+  id: string;
+  school_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Lesson Location relationship type
+export interface LessonLocation {
+  id: string;
+  lesson_id: string;
+  location_id: string;
+  created_at: string;
+}
+
+// Lesson with location information
+export interface LessonWithLocation extends Lesson {
+  location?: Location | null;
+}
+
 // Context types
 export interface SchoolContextType {
   currentSchool: School | null;

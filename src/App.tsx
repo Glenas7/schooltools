@@ -9,6 +9,7 @@ import { SchoolProvider } from "./contexts/SchoolContext";
 import { SchoolsProvider } from "./contexts/SchoolsContext";
 import { SubjectsProvider } from "./contexts/SubjectsContext";
 import { TeachersProvider } from "./contexts/TeachersContext";
+import { LocationsProvider } from "./contexts/LocationsContext";
 import LessonsProvider from "./contexts/LessonsContext";
 import { DragProvider } from "./contexts/DragContext";
 
@@ -27,6 +28,7 @@ import SchoolSelect from "./pages/SchoolSelect";
 import Schedule from "./pages/Schedule";
 import Teachers from "./pages/Teachers";
 import Subjects from "./pages/Subjects";
+import Locations from "./pages/Locations";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
@@ -74,13 +76,15 @@ const App = () => (
                   <RequireSchoolAccess>
                     <SchoolProvider>
                       <SubjectsProvider>
-                        <TeachersProvider>
-                          <LessonsProvider>
-                            <DragProvider>
-                              <SchoolLayout />
-              </DragProvider>
-            </LessonsProvider>
-          </TeachersProvider>
+                        <LocationsProvider>
+                          <TeachersProvider>
+                            <LessonsProvider>
+                              <DragProvider>
+                                <SchoolLayout />
+                              </DragProvider>
+                            </LessonsProvider>
+                          </TeachersProvider>
+                        </LocationsProvider>
                       </SubjectsProvider>
                     </SchoolProvider>
                   </RequireSchoolAccess>
@@ -89,6 +93,7 @@ const App = () => (
                 <Route path="schedule" element={<Schedule />} />
                 <Route path="teachers" element={<Teachers />} />
                 <Route path="subjects" element={<Subjects />} />
+                <Route path="locations" element={<Locations />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
 
