@@ -166,25 +166,15 @@ const LocationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     setError(null);
 
     try {
-      // First, check if lesson already has a location and remove it
-      console.log('[LocationsContext] Deleting existing location assignments for lesson:', lessonId);
-      const { error: deleteError } = await supabase
-        .from('lesson_locations')
-        .delete()
-        .eq('lesson_id', lessonId);
+      // Update the lesson with the new location_id
+      console.log('[LocationsContext] Updating lesson with location_id:', { lessonId, locationId });
+      const { error: updateError } = await supabase
+        .from('lessons')
+        .update({ location_id: locationId })
+        .eq('id', lessonId)
+        .eq('school_id', currentSchool.id);
 
-      if (deleteError) throw deleteError;
-
-      // Then assign the new location
-      console.log('[LocationsContext] Inserting new location assignment:', { lessonId, locationId });
-      const { error: insertError } = await supabase
-        .from('lesson_locations')
-        .insert({
-          lesson_id: lessonId,
-          location_id: locationId
-        });
-
-      if (insertError) throw insertError;
+      if (updateError) throw updateError;
 
       console.log('[LocationsContext] Location assignment completed successfully');
       setLoading(false);
@@ -205,12 +195,13 @@ const LocationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     setError(null);
 
     try {
-      const { error: deleteError } = await supabase
-        .from('lesson_locations')
-        .delete()
-        .eq('lesson_id', lessonId);
+      const { error: updateError } = await supabase
+        .from('lessons')
+        .update({ location_id: null })
+        .eq('id', lessonId)
+        .eq('school_id', currentSchool.id);
 
-      if (deleteError) throw deleteError;
+      if (updateError) throw updateError;
 
       setLoading(false);
     } catch (e) {
@@ -227,7 +218,7 @@ const LocationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
     try {
       const { data, error: fetchError } = await supabase
-        .from('lesson_locations')
+        .from('lessons')
         .select(`
           location_id,
           locations (
@@ -238,7 +229,8 @@ const LocationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }
             updated_at
           )
         `)
-        .eq('lesson_id', lessonId)
+        .eq('id', lessonId)
+        .eq('school_id', currentSchool.id)
         .single();
 
       if (fetchError || !data || !data.locations) {
@@ -261,27 +253,12 @@ const LocationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     console.log('[LocationsContext] getLessonsWithoutLocation: Fetching lessons for school:', currentSchool.id);
 
     try {
-      // First, get all lesson IDs that have locations
-      const { data: lessonsWithLocations, error: locationsError } = await supabase
-        .from('lesson_locations')
-        .select('lesson_id');
-
-      if (locationsError) throw locationsError;
-
-      const lessonIdsWithLocations = lessonsWithLocations?.map(ll => ll.lesson_id) || [];
-      console.log('[LocationsContext] Lesson IDs with locations:', lessonIdsWithLocations);
-
-      // Then get all lessons for this school that are NOT in that list
-      let query = supabase
+      // Get all lessons for this school that have no location_id
+      const { data, error: fetchError } = await supabase
         .from('lessons')
         .select('*')
-        .eq('school_id', currentSchool.id);
-
-      if (lessonIdsWithLocations.length > 0) {
-        query = query.not('id', 'in', `(${lessonIdsWithLocations.join(',')})`);
-      }
-
-      const { data, error: fetchError } = await query;
+        .eq('school_id', currentSchool.id)
+        .is('location_id', null);
 
       if (fetchError) throw fetchError;
 
@@ -291,7 +268,7 @@ const LocationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           id: l.id, 
           student: l.student_name, 
           duration_minutes: l.duration_minutes,
-          lesson_locations: l.lesson_locations 
+          location_id: l.location_id 
         }))
       });
 
@@ -387,25 +364,14 @@ const LocationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     setError(null);
 
     try {
-      // Remove existing locations for these lessons
-      const { error: deleteError } = await supabase
-        .from('lesson_locations')
-        .delete()
-        .in('lesson_id', lessonIds);
+      // Update all lessons with the new location_id
+      const { error: updateError } = await supabase
+        .from('lessons')
+        .update({ location_id: locationId })
+        .in('id', lessonIds)
+        .eq('school_id', currentSchool.id);
 
-      if (deleteError) throw deleteError;
-
-      // Insert new location assignments
-      const lessonLocationData = lessonIds.map(lessonId => ({
-        lesson_id: lessonId,
-        location_id: locationId
-      }));
-
-      const { error: insertError } = await supabase
-        .from('lesson_locations')
-        .insert(lessonLocationData);
-
-      if (insertError) throw insertError;
+      if (updateError) throw updateError;
 
       setLoading(false);
     } catch (e) {
