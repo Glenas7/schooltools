@@ -14,7 +14,7 @@ The automated export system is **fully implemented** and ready to use. Here's wh
 
 ## 🔧 **Production Setup Steps**
 
-🎉 **Great news!** The automated export system is **ready to use immediately** - no additional setup required!
+The automated export system requires **Google Sheets Service Account credentials** to write to Google Sheets.
 
 ### ✅ **What's Already Configured:**
 
@@ -23,13 +23,39 @@ The automated export system is **fully implemented** and ready to use. Here's wh
 - ✅ **Database Schema**: All tables and functions are set up
 - ✅ **Automated Scheduling**: Cron jobs are automatically managed
 
-### 🚀 **Ready to Use!**
+### 🔧 **Required Setup: Google Sheets Service Account**
 
-All schools can immediately:
-- Configure Google Sheet URLs and tab names
-- Set up automated export schedules (hourly/daily/weekly)
-- Perform manual exports
-- View export history and logs
+You need to configure Google Sheets credentials for the system to write to Google Sheets:
+
+**Step 1: Create Google Service Account**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing one
+3. Enable the **Google Sheets API**
+4. Go to **IAM & Admin** → **Service Accounts**
+5. Click **"Create Service Account"**
+6. Give it a name like "School Tools Sheets Access"
+7. Click **"Create and Continue"**
+8. Skip role assignment (click **"Continue"**)
+9. Click **"Done"**
+
+**Step 2: Generate Service Account Key**
+1. Click on your newly created service account
+2. Go to **"Keys"** tab
+3. Click **"Add Key"** → **"Create new key"**
+4. Choose **JSON** format
+5. Download the JSON file
+
+**Step 3: Set Environment Variables in Supabase**
+1. Open the downloaded JSON file
+2. In your **Supabase Dashboard**, go to **Project Settings** → **Edge Functions**
+3. Scroll to **"Environment Variables"** section
+4. Add these two variables:
+   - **Name**: `GOOGLE_SHEETS_CLIENT_EMAIL`
+   - **Value**: Copy the `client_email` value from your JSON file
+   - **Name**: `GOOGLE_SHEETS_PRIVATE_KEY`  
+   - **Value**: Copy the `private_key` value from your JSON file (including the `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` parts)
+
+✅ **That's it!** The system is now ready for automated exports.
 
 ### **Test the Setup**
 
@@ -42,7 +68,7 @@ All schools can immediately:
 ## 📋 **User Instructions**
 
 ### **For App Creator (You):**
-- No setup required - system is ready to use
+- Set up Google Sheets Service Account credentials (one-time setup)
 - Monitor usage across all schools
 
 ### **For School Admins:**
@@ -131,7 +157,7 @@ LIMIT 5;
 
 You'll know the setup is working when:
 
-✅ System is ready immediately (no setup required)  
+✅ Google Sheets Service Account credentials are configured  
 ✅ All school admins can select auto-export frequencies  
 ✅ Manual exports complete successfully  
 ✅ Export history shows successful automated exports  
