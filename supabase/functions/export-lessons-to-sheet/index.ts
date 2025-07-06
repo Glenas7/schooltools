@@ -109,7 +109,9 @@ const exportLessonsToSheet = async (schoolId: string): Promise<void> => {
       start_date,
       end_date,
       subjects (name),
-      users (name),
+      teacher:user_schools!lessons_teacher_id_school_id_fkey (
+        users (name)
+      ),
       locations (name)
     `)
     .eq('school_id', schoolId)
@@ -144,7 +146,7 @@ const exportLessonsToSheet = async (schoolId: string): Promise<void> => {
         lesson.student_name || '',
         (lesson.duration_minutes || 0).toString(),
         lesson.subjects?.name || '',
-        lesson.users?.name || 'Unassigned',
+        lesson.teacher?.users?.name || 'Unassigned',
         lesson.locations?.name || 'No location',
         getDayName(lesson.day_of_week),
         lesson.start_time || 'Not scheduled',
