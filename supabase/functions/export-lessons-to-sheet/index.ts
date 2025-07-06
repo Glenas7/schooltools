@@ -52,8 +52,8 @@ const extractSpreadsheetId = (url: string): string | null => {
 };
 
 // Main export function
-const exportLessonsToSheet = async (schoolId: string): Promise<void> => {
-  console.log('Starting lesson export for school:', schoolId);
+const exportLessonsToSheet = async (schoolId: string, source: string = 'manual'): Promise<void> => {
+  console.log('Starting lesson export for school:', schoolId, 'source:', source);
   
   // Get Google Sheets credentials
   const privateKey = Deno.env.get("GOOGLE_SHEETS_PRIVATE_KEY");
@@ -77,7 +77,7 @@ const exportLessonsToSheet = async (schoolId: string): Promise<void> => {
   // Get school export configuration
   const { data: school, error: schoolError } = await supabase
     .from('schools')
-    .select('export_google_sheet_url, export_google_sheet_tab')
+    .select('export_google_sheet_url, export_google_sheet_tab, export_active_lessons_only')
     .eq('id', schoolId)
     .single();
     
@@ -113,20 +113,18 @@ const exportLessonsToSheet = async (schoolId: string): Promise<void> => {
       start_date,
       end_date,
       subjects (name),
-      teacher:user_schools!lessons_teacher_id_school_id_fkey (
-        users (name)
-      ),
+      users (name),
       locations (name)
     `)
     .eq('school_id', schoolId);
     
-      // Apply active lessons filter if enabled
-    if (school.export_active_lessons_only) {
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-      lessonsQuery = lessonsQuery
-        .lte('start_date', today)
-        .gt('end_date', today);
-    }
+  // Apply active lessons filter if enabled
+  if (school.export_active_lessons_only) {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    lessonsQuery = lessonsQuery
+      .lte('start_date', today)
+      .gt('end_date', today);
+  }
   
   const { data: lessons, error: lessonsError } = await lessonsQuery.order('student_name');
     
@@ -159,7 +157,7 @@ const exportLessonsToSheet = async (schoolId: string): Promise<void> => {
         lesson.student_name || '',
         (lesson.duration_minutes || 0).toString(),
         lesson.subjects?.name || '',
-        lesson.teacher?.users?.name || 'Unassigned',
+        lesson.users?.name || 'Unassigned',
         lesson.locations?.name || 'No location',
         getDayName(lesson.day_of_week),
         lesson.start_time || 'Not scheduled',
@@ -204,6 +202,19 @@ const exportLessonsToSheet = async (schoolId: string): Promise<void> => {
   });
   
   console.log('Lesson export completed successfully');
+  
+  // Log the export (if export_logs table exists)
+  try {
+    await supabase
+      .from('export_logs')
+      .insert({
+        school_id: schoolId,
+        export_type: source,
+        status: 'completed'
+      });
+  } catch (logError) {
+    console.warn('Could not log export (table may not exist):', logError);
+  }
 };
 
 // Create Supabase client with user auth
@@ -245,26 +256,14 @@ serve(async (req: Request) => {
     );
   }
   
+  let school_id: string | undefined;
+  let source: string = 'manual';
+  
   try {
-    // Verify authentication
-    if (!req.headers.get('Authorization')) {
-      throw new Error('No authorization header');
-    }
-    
-    const supabase = createSupabaseClient(req);
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { headers: corsHeaders, status: 401 }
-      );
-    }
-    
-    // Get school ID from request body
-    const { school_id } = await req.json();
+    // Get request body
+    const requestBody = await req.json();
+    school_id = requestBody.school_id;
+    source = requestBody.source || 'manual';
     
     if (!school_id) {
       return new Response(
@@ -273,24 +272,59 @@ serve(async (req: Request) => {
       );
     }
     
-    // Check if user is admin or superadmin for this school
-    const { data: userSchool, error: userSchoolError } = await supabase
-      .from('user_schools')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('school_id', school_id)
-      .eq('active', true)
-      .single();
-    
-    if (userSchoolError || !userSchool || (userSchool.role !== 'admin' && userSchool.role !== 'superadmin')) {
-      return new Response(
-        JSON.stringify({ error: 'Forbidden: Admin access required' }),
-        { headers: corsHeaders, status: 403 }
-      );
+    // For manual exports, verify authentication and authorization
+    if (source === 'manual') {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({ error: 'No authorization header' }),
+          { headers: corsHeaders, status: 401 }
+        );
+      }
+      
+      // Create Supabase client with user auth
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      
+      const supabase = createClient(supabaseUrl, supabaseKey, {
+        auth: { 
+          persistSession: false,
+          autoRefreshToken: false
+        },
+        global: {
+          headers: { Authorization: authHeader }
+        }
+      });
+      
+      // Get authenticated user
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { headers: corsHeaders, status: 401 }
+        );
+      }
+      
+      // Check if user is admin or superadmin for this school
+      const { data: userSchool, error: userSchoolError } = await supabase
+        .from('user_schools')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('school_id', school_id)
+        .eq('active', true)
+        .single();
+      
+      if (userSchoolError || !userSchool || (userSchool.role !== 'admin' && userSchool.role !== 'superadmin')) {
+        return new Response(
+          JSON.stringify({ error: 'Forbidden: Admin access required' }),
+          { headers: corsHeaders, status: 403 }
+        );
+      }
     }
     
     // Perform the export
-    await exportLessonsToSheet(school_id);
+    await exportLessonsToSheet(school_id, source);
     
     return new Response(
       JSON.stringify({ success: true, message: 'Lessons exported successfully' }),
@@ -298,6 +332,32 @@ serve(async (req: Request) => {
     );
   } catch (error) {
     console.error('Error in export function:', error);
+    
+    // Try to log the error if we have school_id
+    if (school_id) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+        
+        const supabase = createClient(supabaseUrl, supabaseKey, {
+          auth: { 
+            persistSession: false,
+            autoRefreshToken: false
+          }
+        });
+        
+        await supabase
+          .from('export_logs')
+          .insert({
+            school_id,
+            export_type: source,
+            status: 'failed',
+            error_message: error.message
+          });
+      } catch (logError) {
+        console.warn('Could not log error:', logError);
+      }
+    }
     
     return new Response(
       JSON.stringify({ error: error.message || 'Internal server error' }),

@@ -1,0 +1,4 @@
+# Supabase configuration file
+
+[functions.export-lessons-to-sheet]
+verify_jwt = false 

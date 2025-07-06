@@ -77,13 +77,13 @@ const App = () => (
                     <SchoolProvider>
                       <SubjectsProvider>
                         <LocationsProvider>
-                          <TeachersProvider>
-                            <LessonsProvider>
-                              <DragProvider>
-                                <SchoolLayout />
-                              </DragProvider>
-                            </LessonsProvider>
-                          </TeachersProvider>
+                        <TeachersProvider>
+                          <LessonsProvider>
+                            <DragProvider>
+                              <SchoolLayout />
+              </DragProvider>
+            </LessonsProvider>
+          </TeachersProvider>
                         </LocationsProvider>
                       </SubjectsProvider>
                     </SchoolProvider>

@@ -26,6 +26,9 @@ export interface School {
   export_google_sheet_tab?: string;
   auto_export_frequency?: 'none' | 'hourly' | 'daily' | 'weekly';
   export_active_lessons_only?: boolean;
+  export_schedule_time?: string; // HH:MM:SS format
+  export_schedule_day?: number; // 1=Monday, 7=Sunday
+  export_timezone?: string; // Timezone string (e.g., 'Europe/Madrid', 'America/New_York')
   join_code: string;
   school_year_end_date?: string; // YYYY-MM-DD format
   settings?: Record<string, any>;

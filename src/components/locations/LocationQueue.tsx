@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useLessons } from '../../contexts/LessonsContext';
 import { useSubjects } from '../../contexts/SubjectsContext';
 import { useLocations } from '../../contexts/LocationsContext';
+import { useTeachers } from '../../contexts/TeachersContext';
 import { Lesson, Location } from '../../types';
 import { Clock, User, BookOpen, MapPin, InfoIcon } from 'lucide-react';
 
@@ -20,9 +21,16 @@ const LocationQueue = ({ lessonsWithoutLocation, onLocationAssigned }: LocationQ
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const { subjects } = useSubjects();
   const { locations, assignLocationToLesson, loading } = useLocations();
+  const { teachers, getTeacherById } = useTeachers();
 
   const getSubjectById = (subjectId: string) => {
     return subjects.find(subject => subject.id === subjectId);
+  };
+
+  const getTeacherName = (teacherId: string | null) => {
+    if (!teacherId) return null;
+    const teacher = getTeacherById(teacherId);
+    return teacher?.name || null;
   };
 
   // Filter lessons based on search query
@@ -33,14 +41,17 @@ const LocationQueue = ({ lessonsWithoutLocation, onLocationAssigned }: LocationQ
     
     const query = searchQuery.toLowerCase().trim();
     const subject = getSubjectById(lesson.subject_id);
+    const teacherName = getTeacherName(lesson.teacher_id);
     
     const studentName = lesson.student_name.toLowerCase();
     const subjectName = subject?.name?.toLowerCase() || '';
     const duration = lesson.duration.toString();
+    const teacher = teacherName?.toLowerCase() || '';
     
     return studentName.includes(query) || 
            subjectName.includes(query) || 
-           duration.includes(query);
+           duration.includes(query) ||
+           teacher.includes(query);
   });
 
   // Set the first lesson as selected when lessons change
@@ -149,6 +160,7 @@ const LocationQueue = ({ lessonsWithoutLocation, onLocationAssigned }: LocationQ
           <div className="flex-1 overflow-y-auto space-y-2">
             {filteredLessons.map((lesson) => {
               const subject = getSubjectById(lesson.subject_id);
+              const teacherName = getTeacherName(lesson.teacher_id);
               const isSelected = selectedLesson?.id === lesson.id;
               
               return (
@@ -176,12 +188,10 @@ const LocationQueue = ({ lessonsWithoutLocation, onLocationAssigned }: LocationQ
                         <span>{subject?.name || 'Unknown Subject'}</span>
                       </div>
                       
-                      {lesson.teacher_id && (
-                        <div className="flex items-center">
-                          <User className="h-4 w-4 mr-1" />
-                          <span>Assigned</span>
-                        </div>
-                      )}
+                      <div className="flex items-center">
+                        <User className="h-4 w-4 mr-1" />
+                        <span>{teacherName || 'Unassigned'}</span>
+                      </div>
                     </div>
                     
                     {lesson.day !== null && lesson.start_time && (
@@ -215,6 +225,7 @@ const LocationQueue = ({ lessonsWithoutLocation, onLocationAssigned }: LocationQ
                   <div><strong>Student:</strong> {selectedLesson.student_name}</div>
                   <div><strong>Subject:</strong> {getSubjectById(selectedLesson.subject_id)?.name}</div>
                   <div><strong>Duration:</strong> {selectedLesson.duration} minutes</div>
+                  <div><strong>Teacher:</strong> {getTeacherName(selectedLesson.teacher_id) || 'Unassigned'}</div>
                   {selectedLesson.day !== null && selectedLesson.start_time && (
                     <div>
                       <strong>Schedule:</strong> {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][selectedLesson.day]} at {selectedLesson.start_time}

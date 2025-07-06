@@ -22,6 +22,8 @@ if command -v supabase &> /dev/null; then
   echo "🔧 Deploying Supabase Edge Functions..."
   supabase functions deploy get-google-sheet-lessons
   supabase functions deploy public-get-students
+  supabase functions deploy export-lessons-to-sheet
+  supabase functions deploy create-user
 else
   echo "⚠️ Supabase CLI not found. Install with: npm install -g supabase"
   echo "⚠️ Skipping Supabase functions deployment..."

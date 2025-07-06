@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useSubjects } from '../../contexts/SubjectsContext';
 import { useLocations } from '../../contexts/LocationsContext';
+import { useTeachers } from '../../contexts/TeachersContext';
 import { Lesson } from '../../types';
 import { Clock, User, BookOpen, MapPin, InfoIcon, Users } from 'lucide-react';
 
@@ -20,6 +21,7 @@ const BulkLocationAssignment = ({ allLessons, onLocationAssigned }: BulkLocation
   const [lessonLocations, setLessonLocations] = useState<Record<string, string>>({});
   const { subjects } = useSubjects();
   const { locations, assignLocationToMultipleLessons, loading, getLessonLocationsBatch } = useLocations();
+  const { teachers, getTeacherById } = useTeachers();
 
   // Fetch location data for all lessons
   useEffect(() => {
@@ -53,6 +55,12 @@ const BulkLocationAssignment = ({ allLessons, onLocationAssigned }: BulkLocation
     return subjects.find(subject => subject.id === subjectId);
   };
 
+  const getTeacherName = (teacherId: string | null) => {
+    if (!teacherId) return null;
+    const teacher = getTeacherById(teacherId);
+    return teacher?.name || null;
+  };
+
   const getLessonLocationName = (lessonId: string) => {
     return lessonLocations[lessonId] || null;
   };
@@ -65,14 +73,17 @@ const BulkLocationAssignment = ({ allLessons, onLocationAssigned }: BulkLocation
     
     const query = searchQuery.toLowerCase().trim();
     const subject = getSubjectById(lesson.subject_id);
+    const teacherName = getTeacherName(lesson.teacher_id);
     
     const studentName = lesson.student_name.toLowerCase();
     const subjectName = subject?.name?.toLowerCase() || '';
     const duration = lesson.duration.toString();
+    const teacher = teacherName?.toLowerCase() || '';
     
     return studentName.includes(query) || 
            subjectName.includes(query) || 
-           duration.includes(query);
+           duration.includes(query) ||
+           teacher.includes(query);
   });
 
   const handleLessonToggle = (lessonId: string, checked: boolean) => {
@@ -159,6 +170,7 @@ const BulkLocationAssignment = ({ allLessons, onLocationAssigned }: BulkLocation
           <div className="flex-1 overflow-y-auto space-y-2">
             {filteredLessons.map((lesson) => {
               const subject = getSubjectById(lesson.subject_id);
+              const teacherName = getTeacherName(lesson.teacher_id);
               const isSelected = selectedLessonIds.includes(lesson.id);
               
               return (
@@ -197,12 +209,10 @@ const BulkLocationAssignment = ({ allLessons, onLocationAssigned }: BulkLocation
                             <span>{subject?.name || 'Unknown Subject'}</span>
                           </div>
                           
-                          {lesson.teacher_id && (
-                            <div className="flex items-center">
-                              <User className="h-4 w-4 mr-1" />
-                              <span>Assigned</span>
-                            </div>
-                          )}
+                          <div className="flex items-center">
+                            <User className="h-4 w-4 mr-1" />
+                            <span>{teacherName || 'Unassigned'}</span>
+                          </div>
                         </div>
                         
                         <div className="flex items-center text-sm">
@@ -244,22 +254,25 @@ const BulkLocationAssignment = ({ allLessons, onLocationAssigned }: BulkLocation
                   Selected Lessons ({selectedLessonIds.length}):
                 </h4>
                 <div className="max-h-32 overflow-y-auto space-y-1 text-sm">
-                  {selectedLessons.map((lesson) => (
-                    <div key={lesson.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="font-medium truncate">{lesson.student_name}</span>
-                        <div className="flex items-center text-xs">
-                          <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
-                          <span className={`truncate ${getLessonLocationName(lesson.id) ? 'text-green-600' : 'text-orange-600'}`}>
-                            {getLessonLocationName(lesson.id) || 'No location assigned'}
-                          </span>
+                  {selectedLessons.map((lesson) => {
+                    const teacherName = getTeacherName(lesson.teacher_id);
+                    return (
+                      <div key={lesson.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="font-medium truncate">{lesson.student_name}</span>
+                          <div className="flex items-center text-xs">
+                            <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
+                            <span className={`truncate ${getLessonLocationName(lesson.id) ? 'text-green-600' : 'text-orange-600'}`}>
+                              {getLessonLocationName(lesson.id) || 'No location assigned'}
+                            </span>
+                          </div>
                         </div>
+                        <span className="text-muted-foreground text-xs sm:text-sm flex-shrink-0">
+                          {getSubjectById(lesson.subject_id)?.name} • {teacherName || 'Unassigned'}
+                        </span>
                       </div>
-                      <span className="text-muted-foreground text-xs sm:text-sm flex-shrink-0">
-                        {getSubjectById(lesson.subject_id)?.name}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

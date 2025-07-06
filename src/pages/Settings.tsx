@@ -18,7 +18,7 @@ import { useSchool } from '../contexts/SchoolContext';
 import { supabase } from '../lib/supabaseClient';
 import AdminUserManagement from '../components/settings/AdminUserManagement';
 import { useStudentNames } from '../hooks/useStudentNames';
-import { exportLessonsToSheet, updateExportSettings } from '../lib/exportLessonsService';
+import { exportLessonsToSheet, updateExportSettings, calculateNextExportTime, formatNextExportTime } from '../lib/exportLessonsService';
 
 const Settings = () => {
   const { user } = useAuth();
@@ -63,6 +63,12 @@ const Settings = () => {
   const [exportGoogleSheetTab, setExportGoogleSheetTab] = useState(currentSchool?.export_google_sheet_tab || 'lessons');
   const [autoExportFrequency, setAutoExportFrequency] = useState(currentSchool?.auto_export_frequency || 'none');
   const [exportActiveLessonsOnly, setExportActiveLessonsOnly] = useState(currentSchool?.export_active_lessons_only || false);
+  const [exportScheduleTime, setExportScheduleTime] = useState(currentSchool?.export_schedule_time?.slice(0, 5) || '09:00'); // HH:MM format for input
+  const [exportScheduleDay, setExportScheduleDay] = useState(currentSchool?.export_schedule_day || 1);
+  const [exportTimezone, setExportTimezone] = useState(() => {
+    // Auto-detect timezone from browser
+    return currentSchool?.export_timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  });
   const [isSavingExportSettings, setIsSavingExportSettings] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportLogs, setExportLogs] = useState<any[]>([]);
@@ -88,6 +94,9 @@ const Settings = () => {
     setExportGoogleSheetTab(currentSchool?.export_google_sheet_tab || 'lessons');
     setAutoExportFrequency(currentSchool?.auto_export_frequency || 'none');
     setExportActiveLessonsOnly(currentSchool?.export_active_lessons_only || false);
+    setExportScheduleTime(currentSchool?.export_schedule_time?.slice(0, 5) || '09:00');
+    setExportScheduleDay(currentSchool?.export_schedule_day || 1);
+    setExportTimezone(currentSchool?.export_timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   }, [
     currentSchool?.google_sheet_url, 
     currentSchool?.google_sheet_name, 
@@ -101,7 +110,10 @@ const Settings = () => {
     currentSchool?.export_google_sheet_url,
     currentSchool?.export_google_sheet_tab,
     currentSchool?.auto_export_frequency,
-    currentSchool?.export_active_lessons_only
+    currentSchool?.export_active_lessons_only,
+    currentSchool?.export_schedule_time,
+    currentSchool?.export_schedule_day,
+    currentSchool?.export_timezone
   ]);
 
   // Fetch lesson count without end dates when school changes
@@ -542,7 +554,10 @@ const Settings = () => {
         export_google_sheet_url: exportGoogleSheetUrl || null,
         export_google_sheet_tab: exportGoogleSheetTab || 'lessons',
         auto_export_frequency: autoExportFrequency,
-        export_active_lessons_only: exportActiveLessonsOnly
+        export_active_lessons_only: exportActiveLessonsOnly,
+        export_schedule_time: exportScheduleTime + ':00', // Convert HH:MM to HH:MM:SS
+        export_schedule_day: exportScheduleDay,
+        export_timezone: exportTimezone
       });
 
       if (!result.success) {
@@ -1096,153 +1111,192 @@ const Settings = () => {
             </CardTitle>
             <CardDescription>Export all lessons to Google Sheets for external use and analysis</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <div className="flex items-start">
-                <AlertTriangle className="h-5 w-5 mr-2 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-medium text-blue-900 mb-1">Google Sheets Access Required</h4>
-                  <p className="text-sm text-blue-800">
-                    To export lessons, you need to give our Google service account <strong>edit access</strong> to your Google Sheet. 
-                    Share the sheet with this email: <code className="bg-blue-100 px-1 rounded">schooltools@schooltools-459418.iam.gserviceaccount.com</code>
-                  </p>
-                </div>
-              </div>
+                  <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="export-google-sheet-url">Export Google Sheet URL</Label>
+            <div className="flex gap-2">
+              <Input
+                id="export-google-sheet-url"
+                type="url"
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                value={exportGoogleSheetUrl}
+                onChange={(e) => setExportGoogleSheetUrl(e.target.value)}
+                className="flex-1"
+              />
+              <Button 
+                onClick={handleSaveExportSettings}
+                disabled={isSavingExportSettings}
+                size="sm"
+              >
+                {isSavingExportSettings ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Save
+              </Button>
             </div>
-
-
+            <p className="text-sm text-muted-foreground">
+              Enter the URL of your Google Sheet where lessons will be exported. You need to give our Google service account <strong>edit access</strong> to your sheet by sharing it with: <code className="bg-gray-100 px-1 rounded text-xs">schooltools@schooltools-459418.iam.gserviceaccount.com</code>
+              {exportGoogleSheetUrl && (
+                <a 
+                  href={exportGoogleSheetUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="ml-2 inline-flex items-center text-blue-600 hover:text-blue-800"
+                >
+                  View Sheet <ExternalLink className="h-3 w-3 ml-1" />
+                </a>
+              )}
+            </p>
+          </div>
+                        
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="export-google-sheet-tab">Sheet Tab Name</Label>
+              <Input
+                id="export-google-sheet-tab"
+                type="text"
+                placeholder="lessons"
+                value={exportGoogleSheetTab}
+                onChange={(e) => setExportGoogleSheetTab(e.target.value)}
+              />
+              <p className="text-sm text-muted-foreground">
+                Name of the worksheet tab to export to
+              </p>
+            </div>
             
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="export-google-sheet-url">Export Google Sheet URL</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="export-google-sheet-url"
-                    type="url"
-                    placeholder="https://docs.google.com/spreadsheets/d/..."
-                    value={exportGoogleSheetUrl}
-                    onChange={(e) => setExportGoogleSheetUrl(e.target.value)}
-                    className="flex-1"
-                  />
-                  {exportGoogleSheetUrl && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.open(exportGoogleSheetUrl, '_blank')}
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
+                          <div className="space-y-2">
+                <Label htmlFor="auto-export-frequency">Auto-Export Frequency</Label>
+                <Select 
+                  value={autoExportFrequency} 
+                  onValueChange={(value) => setAutoExportFrequency(value as 'none' | 'hourly' | 'daily' | 'weekly')}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (Manual only)</SelectItem>
+                    <SelectItem value="hourly">Hourly</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                  </SelectContent>
+                </Select>
                 <p className="text-sm text-muted-foreground">
-                  URL of the Google Sheet where lessons will be exported
+                  How often to automatically export lessons
                 </p>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="export-google-sheet-tab">Sheet Tab Name</Label>
-                  <Input
-                    id="export-google-sheet-tab"
-                    type="text"
-                    placeholder="lessons"
-                    value={exportGoogleSheetTab}
-                    onChange={(e) => setExportGoogleSheetTab(e.target.value)}
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    Name of the worksheet tab to export to
-                  </p>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="auto-export-frequency">Auto-Export Frequency</Label>
-                  <Select 
-                    value={autoExportFrequency} 
-                    onValueChange={(value) => setAutoExportFrequency(value as 'none' | 'hourly' | 'daily' | 'weekly')}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select frequency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None (Manual only)</SelectItem>
-                      <SelectItem value="hourly">Hourly</SelectItem>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-muted-foreground">
-                    How often to automatically export lessons
-                  </p>
-                </div>
-              </div>
-              
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="space-y-1">
-                    <Label htmlFor="export-active-only">Export Active Lessons Only</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Only export lessons that are currently active (start date ≤ today, end date {'>'} today)
-                    </p>
-                  </div>
-                  <Switch
-                    id="export-active-only"
-                    checked={exportActiveLessonsOnly}
-                    onCheckedChange={setExportActiveLessonsOnly}
-                  />
-                </div>
-              </div>
-              
-              <div className="flex gap-2">
-                <Button 
-                  onClick={handleSaveExportSettings}
-                  disabled={isSavingExportSettings}
-                  variant="outline"
-                >
-                  {isSavingExportSettings ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Save className="h-4 w-4 mr-2" />
-                  )}
-                  Save Settings
-                </Button>
-                
-                <Button 
-                  onClick={handleExportLessons}
-                  disabled={isExporting || !exportGoogleSheetUrl}
-                  variant="default"
-                >
-                  {isExporting ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Upload className="h-4 w-4 mr-2" />
-                  )}
-                  Export Now
-                </Button>
-              </div>
             </div>
             
-            <div className="bg-green-50 p-4 rounded-lg">
-              <h4 className="font-medium text-green-900 mb-2">Export Data Includes:</h4>
-              <ul className="text-sm text-green-800 space-y-1">
-                <li>• Student Name</li>
-                <li>• Duration (minutes)</li>
-                <li>• Subject</li>
-                <li>• Teacher (or "Unassigned")</li>
-                <li>• Location (or "No location")</li>
-                <li>• Day of Week</li>
-                <li>• Start Time</li>
-                <li>• Start Date</li>
-                <li>• End Date</li>
-              </ul>
-              <p className="text-sm text-green-700 mt-2">
-                All existing data in the target sheet tab will be cleared before export.
-                {exportActiveLessonsOnly && (
-                  <span className="block mt-1 font-medium">
-                    ⚡ Active lessons filter enabled - only currently active lessons will be exported.
+            {/* Schedule Configuration for Daily/Weekly */}
+            {(autoExportFrequency === 'daily' || autoExportFrequency === 'weekly') && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="export-schedule-time">Export Time</Label>
+                    <Input
+                      id="export-schedule-time"
+                      type="time"
+                      value={exportScheduleTime}
+                      onChange={(e) => setExportScheduleTime(e.target.value)}
+                    />
+                                      <p className="text-sm text-muted-foreground">
+                    Time of day to run the export (in your local time - timezone auto-detected)
+                  </p>
+                  </div>
+                  
+                  {autoExportFrequency === 'weekly' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="export-schedule-day">Export Day</Label>
+                      <Select 
+                        value={exportScheduleDay.toString()} 
+                        onValueChange={(value) => setExportScheduleDay(parseInt(value))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select day" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">Monday</SelectItem>
+                          <SelectItem value="2">Tuesday</SelectItem>
+                          <SelectItem value="3">Wednesday</SelectItem>
+                          <SelectItem value="4">Thursday</SelectItem>
+                          <SelectItem value="5">Friday</SelectItem>
+                          <SelectItem value="6">Saturday</SelectItem>
+                          <SelectItem value="7">Sunday</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-muted-foreground">
+                        Day of the week to run the export
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 border rounded-lg">
+              <div className="space-y-1">
+                <Label htmlFor="export-active-only">Export Active Lessons Only</Label>
+                <p className="text-sm text-muted-foreground">
+                  Only export lessons that are currently active (start date ≤ today, end date {'>'} today)
+                </p>
+              </div>
+              <Switch
+                id="export-active-only"
+                checked={exportActiveLessonsOnly}
+                onCheckedChange={setExportActiveLessonsOnly}
+              />
+            </div>
+          </div>
+          
+          <div className="flex gap-3 items-center">
+            <div className="bg-blue-50 p-4 rounded-lg flex-1">
+              <h4 className="font-medium text-blue-900 mb-2">Export Configuration Summary</h4>
+              <p className="text-sm text-blue-800">
+                Lessons will be exported to <strong>{currentSchool?.export_google_sheet_tab || 'lessons'}</strong> tab
+                {currentSchool?.export_google_sheet_url ? ' of your configured Google Sheet.' : '. Please configure a Google Sheet URL first.'}
+                <span className="block mt-1">
+                  Auto-export frequency: <strong>{currentSchool?.auto_export_frequency === 'none' ? 'Manual only' : currentSchool?.auto_export_frequency || 'Manual only'}</strong>
+                </span>
+                <span className="block mt-1">
+                  Lesson filtering: <strong>{currentSchool?.export_active_lessons_only ? 'Active lessons only' : 'All lessons'}</strong>
+                  {currentSchool?.export_active_lessons_only && ' (start date ≤ today < end date)'}
+                </span>
+                <span className="block mt-1">
+                  Timezone: <strong>{currentSchool?.export_timezone || exportTimezone}</strong> (auto-detected)
+                </span>
+                {(currentSchool?.auto_export_frequency === 'daily' || currentSchool?.auto_export_frequency === 'weekly') && (
+                  <span className="block mt-1">
+                    Next export: <strong>{formatNextExportTime(calculateNextExportTime(
+                      currentSchool?.auto_export_frequency || 'none',
+                      currentSchool?.export_schedule_time || '09:00:00',
+                      currentSchool?.export_schedule_day || 1,
+                      currentSchool?.export_timezone || exportTimezone
+                    ))}</strong>
                   </span>
                 )}
               </p>
             </div>
+            
+            {currentSchool?.export_google_sheet_url && (
+              <Button 
+                onClick={handleExportLessons}
+                disabled={isExporting}
+                variant="default"
+                className="flex-shrink-0"
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Upload className="h-4 w-4 mr-2" />
+                )}
+                Export Now
+              </Button>
+            )}
+          </div>
+            
+
             
             {/* Export Logs Section */}
             <div className="space-y-4">
@@ -1310,20 +1364,6 @@ const Settings = () => {
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
-              
-              {autoExportFrequency !== 'none' && exportGoogleSheetUrl && (
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <div className="flex items-center">
-                    <Clock className="h-4 w-4 text-blue-600 mr-2" />
-                    <p className="text-sm text-blue-800">
-                      <strong>Automated exports enabled:</strong> {autoExportFrequency}
-                    </p>
-                  </div>
-                  <p className="text-xs text-blue-600 mt-1">
-                    Next export will run automatically based on your selected frequency
-                  </p>
                 </div>
               )}
             </div>

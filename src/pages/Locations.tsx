@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useLocations } from '../contexts/LocationsContext';
 import { useLessons } from '../contexts/LessonsContext';
 import { useSchool } from '../contexts/SchoolContext';
@@ -34,7 +36,29 @@ const Locations = () => {
   const [lessonsWithoutLocation, setLessonsWithoutLocation] = useState<Lesson[]>([]);
   const [allLessons, setAllLessons] = useState<Lesson[]>([]);
   const [activeTab, setActiveTab] = useState('locations');
+  const [hidePastLessons, setHidePastLessons] = useState(false);
   const { toast } = useToast();
+
+  // Helper function to filter out past lessons
+  const filterPastLessons = (lessons: Lesson[]) => {
+    if (!hidePastLessons) return lessons;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Start of today
+    
+    return lessons.filter(lesson => {
+      if (!lesson.end_date) return true; // Keep lessons with no end date
+      
+      const endDate = new Date(lesson.end_date);
+      endDate.setHours(0, 0, 0, 0); // Start of the end date
+      
+      return endDate >= today; // Keep lessons that end today or later
+    });
+  };
+
+  // Get filtered lessons for display
+  const filteredLessonsWithoutLocation = filterPastLessons(lessonsWithoutLocation);
+  const filteredAllLessons = filterPastLessons(allLessons);
 
   // Fetch lessons when tab changes or locations are updated
   useEffect(() => {
@@ -168,6 +192,19 @@ const Locations = () => {
           <MapPin className="h-6 w-6" />
           Locations - {currentSchool.name}
         </h1>
+        
+        {(activeTab === 'queue' || activeTab === 'bulk') && (
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="hide-past-lessons"
+              checked={hidePastLessons}
+              onCheckedChange={setHidePastLessons}
+            />
+            <Label htmlFor="hide-past-lessons" className="text-sm font-medium">
+              Hide past lessons
+            </Label>
+          </div>
+        )}
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
@@ -179,9 +216,9 @@ const Locations = () => {
           <TabsTrigger value="queue" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
             Location Queue
-            {lessonsWithoutLocation.length > 0 && (
+            {filteredLessonsWithoutLocation.length > 0 && (
               <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 ml-1">
-                {lessonsWithoutLocation.length}
+                {filteredLessonsWithoutLocation.length}
               </span>
             )}
           </TabsTrigger>
@@ -210,14 +247,14 @@ const Locations = () => {
         
         <TabsContent value="queue" className="flex-1 mt-6">
           <LocationQueue 
-            lessonsWithoutLocation={lessonsWithoutLocation}
+            lessonsWithoutLocation={filteredLessonsWithoutLocation}
             onLocationAssigned={handleLocationAssigned}
           />
         </TabsContent>
         
         <TabsContent value="bulk" className="flex-1 mt-6">
           <BulkLocationAssignment 
-            allLessons={allLessons}
+            allLessons={filteredAllLessons}
             onLocationAssigned={handleLocationAssigned}
           />
         </TabsContent>

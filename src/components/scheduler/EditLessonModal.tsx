@@ -114,7 +114,7 @@ const EditLessonModal = ({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isAutocompleteOpen]);
-
+  
   // Find the lesson from props and initialize form fields
   useEffect(() => {
     if (isOpen && lessonId && allLessons.length > 0) {
@@ -211,7 +211,7 @@ const EditLessonModal = ({
       handleSuggestionClick(suggestions[autocompleteSelectedIndex]);
     }
   };
-
+  
   // Validation function to check for overlaps
   const validateNoOverlaps = (): boolean => {
     if (!teacherId || teacherId === "unassigned" || dayOfWeek === null || !startTime) return true;
@@ -277,14 +277,14 @@ const EditLessonModal = ({
       }
       if (!validateNoOverlaps()) {
         setError('This time slot overlaps with another lesson for this teacher.');
-        return;
+      return;
       }
     }
     if (startDate && endDate && isBefore(parseISO(endDate), parseISO(startDate))) {
       setError('End date must be after start date.');
       return;
     }
-
+    
     try {
       setLoading(true);
       const lessonDataToUpdate: Partial<Lesson> & { id: string } = {
@@ -318,7 +318,7 @@ const EditLessonModal = ({
   };
   
   if (!isOpen) return null;
-
+  
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
       if (!open) {
@@ -383,53 +383,53 @@ const EditLessonModal = ({
           </div>
           
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
+          <div className="space-y-2">
               <UILabel htmlFor="edit-duration">Duration (minutes)</UILabel>
-              <div className="flex items-center space-x-2">
-                <Input
+            <div className="flex items-center space-x-2">
+              <Input
                   id="edit-duration"
-                  type="number"
-                  min={15}
+                type="number"
+                min={15}
                   max={120}
-                  step={5}
-                  value={duration}
+                step={5}
+                value={duration}
                   onChange={(e) => setDuration(Math.max(15, Math.min(120, parseInt(e.target.value) || 30)))}
-                  className="w-20"
-                />
-                 <div className="flex space-x-1">
+                className="w-20"
+              />
+              <div className="flex space-x-1">
                   {[30, 45, 60, 90].map((mins) => (
-                    <Button
-                      key={mins}
-                      variant={duration === mins ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setDuration(mins)}
+                  <Button
+                    key={mins}
+                    variant={duration === mins ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDuration(mins)}
                       className="px-2 py-1 text-xs"
-                    >
-                      {mins}
-                    </Button>
-                  ))}
-                </div>
+                  >
+                    {mins}
+                  </Button>
+                ))}
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <UILabel htmlFor="edit-subject">Subject</UILabel>
-              <Select value={subjectId} onValueChange={setSubjectId}>
-                <SelectTrigger id="edit-subject">
-                  <SelectValue placeholder="Select subject" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subjects.map((subject) => (
-                    <SelectItem key={subject.id} value={subject.id}>
-                      {subject.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
           
-                    <div className="space-y-2">
+          <div className="space-y-2">
+              <UILabel htmlFor="edit-subject">Subject</UILabel>
+            <Select value={subjectId} onValueChange={setSubjectId}>
+                <SelectTrigger id="edit-subject">
+                <SelectValue placeholder="Select subject" />
+              </SelectTrigger>
+              <SelectContent>
+                {subjects.map((subject) => (
+                  <SelectItem key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
             <UILabel htmlFor="edit-teacher">Teacher</UILabel>
             <Select value={teacherId} onValueChange={(value) => {
                 setTeacherId(value);
@@ -451,7 +451,7 @@ const EditLessonModal = ({
               </SelectContent>
             </Select>
           </div>
-
+          
           <div className="space-y-2">
             <UILabel htmlFor="edit-location">Location</UILabel>
             <Select value={locationId || "none"} onValueChange={(value) => setLocationId(value === "none" ? "" : value)}>
@@ -471,27 +471,27 @@ const EditLessonModal = ({
           
           {teacherId && teacherId !== "unassigned" && (
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+          <div className="space-y-2">
                 <UILabel htmlFor="edit-dayOfWeek">Day of the Week</UILabel>
-                <Select 
+            <Select 
                     value={dayOfWeek !== null ? dayOfWeek.toString() : ""} 
                     onValueChange={(value) => setDayOfWeek(value ? parseInt(value) : null)}
                     disabled={!teacherId || teacherId === "unassigned"}
-                >
+            >
                   <SelectTrigger id="edit-dayOfWeek">
                     <SelectValue placeholder="Select day" />
-                  </SelectTrigger>
-                  <SelectContent>
+              </SelectTrigger>
+              <SelectContent>
                     {weekDates.map((date, index) => (
                       <SelectItem key={index} value={index.toString()}>
                         {format(date, 'EEEE (MMM d)')}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="space-y-2">
                 <UILabel htmlFor="edit-startTimeHour">Start Time</UILabel>
                 <div className="flex items-center space-x-2">
                   <Select 
@@ -540,27 +540,27 @@ const EditLessonModal = ({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <UILabel htmlFor="start-date">Start Date (Optional)</UILabel>
-              <Input
-                id="start-date"
-                type="date"
-                value={startDate || ''}
-                onChange={(e) => setStartDate(e.target.value || null)}
-              />
-            </div>
-            
-            <div className="space-y-2">
+            <Input
+              id="start-date"
+              type="date"
+              value={startDate || ''}
+              onChange={(e) => setStartDate(e.target.value || null)}
+            />
+          </div>
+          
+          <div className="space-y-2">
               <UILabel htmlFor="end-date">End Date (Optional)</UILabel>
-              <Input
-                id="end-date"
-                type="date"
-                value={endDate || ''}
-                onChange={(e) => setEndDate(e.target.value || null)}
-                min={startDate || undefined}
-              />
+            <Input
+              id="end-date"
+              type="date"
+              value={endDate || ''}
+              onChange={(e) => setEndDate(e.target.value || null)}
+              min={startDate || undefined}
+            />
             </div>
           </div>
-                  </div>
-
+        </div>
+        
         <DialogFooter>
           <Button variant="outline" onClick={() => {
             onClose();
@@ -574,6 +574,6 @@ const EditLessonModal = ({
       </DialogContent>
     </Dialog>
   );
-  };
+};
 
 export default EditLessonModal; 
