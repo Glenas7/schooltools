@@ -14,25 +14,24 @@ The automated export system is **fully implemented** and ready to use. Here's wh
 
 ## 🔧 **Production Setup Steps**
 
-### **Step 1: Find Your Service Role Key**
+🎉 **Great news!** The automated export system is **ready to use immediately** - no additional setup required!
 
-1. Go to your **Supabase Dashboard**
-2. Navigate to **Settings** → **API**
-3. Copy the **`service_role`** key (starts with `eyJhbGciOiJIUzI1NiIs...`)
+### ✅ **What's Already Configured:**
 
-⚠️ **Important**: This is different from the `anon` key. Make sure you copy the **service_role** key.
+- ✅ **Service Role Key**: Automatically available as `SUPABASE_SERVICE_ROLE_KEY` environment variable
+- ✅ **Edge Functions**: Deployed and ready to handle exports
+- ✅ **Database Schema**: All tables and functions are set up
+- ✅ **Automated Scheduling**: Cron jobs are automatically managed
 
-### **Step 2: Configure the Service Role Key**
+### 🚀 **Ready to Use!**
 
-1. **Log in to your app** as a **superadmin** user
-2. Go to **Settings** page
-3. Find the **"Automated Export Configuration"** section at the top
-4. Paste your service role key in the input field
-5. Click **"Configure Service Role Key"**
+All schools can immediately:
+- Configure Google Sheet URLs and tab names
+- Set up automated export schedules (hourly/daily/weekly)
+- Perform manual exports
+- View export history and logs
 
-✅ **That's it!** The system is now ready for automated exports.
-
-### **Step 3: Test the Setup**
+### **Test the Setup**
 
 1. As an **admin or superadmin**, scroll down to the **"Export Lessons"** section
 2. Configure a Google Sheet URL and tab name
@@ -42,9 +41,9 @@ The automated export system is **fully implemented** and ready to use. Here's wh
 
 ## 📋 **User Instructions**
 
-### **For Superadmins:**
-- Configure the service role key (one-time setup)
-- Monitor system-wide export functionality
+### **For App Creator (You):**
+- No setup required - system is ready to use
+- Monitor usage across all schools
 
 ### **For School Admins:**
 - Configure Google Sheet settings for their school
@@ -60,8 +59,8 @@ The automated export system is **fully implemented** and ready to use. Here's wh
 ### **Check if Setup is Working:**
 
 1. **Service Role Key Status**: 
-   - Superadmins will see a green checkmark in the "Automated Export Configuration" section
-   - Admins will see automated export options enabled
+   - System is configured once by app creator
+   - All admins can use automated export options immediately
 
 2. **Test Manual Export**:
    - Configure a Google Sheet URL
@@ -77,12 +76,6 @@ The automated export system is **fully implemented** and ready to use. Here's wh
 You can verify the setup directly in the database:
 
 ```sql
--- Check if service role key is configured
-SELECT EXISTS(
-  SELECT 1 FROM app_secrets 
-  WHERE secret_name = 'supabase_service_role_key'
-) as service_key_configured;
-
 -- Check active cron jobs
 SELECT jobname, schedule, active 
 FROM cron.job 
@@ -99,16 +92,16 @@ LIMIT 5;
 
 ### **Common Issues:**
 
-1. **"Service role key not configured" error**
-   - **Solution**: Follow Step 2 above to configure the key as a superadmin
+1. **"Missing Google Sheets Service Account credentials" error**
+   - **Solution**: Ensure GOOGLE_SHEETS_PRIVATE_KEY and GOOGLE_SHEETS_CLIENT_EMAIL environment variables are set
 
-2. **"Permission denied" when configuring service role key**
-   - **Solution**: Make sure you're logged in as a superadmin user
+2. **Automated exports not working**
+   - **Solution**: Check that auto-export frequency is set to something other than "none"
 
 3. **Manual exports work but automated exports don't**
-   - **Check**: Service role key is configured
    - **Check**: Auto-export frequency is set to something other than "none"
    - **Check**: Google Sheet URL is properly configured
+   - **Check**: Export logs for specific error messages
 
 4. **Google Sheets permission errors**
    - **Solution**: Share your Google Sheet with: `schooltools@schooltools-459418.iam.gserviceaccount.com`
@@ -138,8 +131,8 @@ LIMIT 5;
 
 You'll know the setup is working when:
 
-✅ Superadmin sees "Service role key is configured" with green checkmark  
-✅ Admins can select auto-export frequencies without warnings  
+✅ System is ready immediately (no setup required)  
+✅ All school admins can select auto-export frequencies  
 ✅ Manual exports complete successfully  
 ✅ Export history shows successful automated exports  
 ✅ Google Sheets receive updated lesson data automatically  

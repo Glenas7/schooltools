@@ -66,11 +66,7 @@ const Settings = () => {
   const [exportLogs, setExportLogs] = useState<any[]>([]);
   const [isLoadingExportLogs, setIsLoadingExportLogs] = useState(false);
   
-  // Service role key configuration (superadmin only)
-  const [serviceRoleKey, setServiceRoleKey] = useState('');
-  const [isServiceRoleKeyConfigured, setIsServiceRoleKeyConfigured] = useState(false);
-  const [isSavingServiceRoleKey, setIsSavingServiceRoleKey] = useState(false);
-  const [isCheckingServiceRoleKey, setIsCheckingServiceRoleKey] = useState(false);
+
 
   // Sync google sheet state when currentSchool changes
   useEffect(() => {
@@ -109,9 +105,8 @@ const Settings = () => {
     if (currentSchool?.id) {
       fetchLessonsWithoutEndDateCount();
       fetchExportLogs();
-      checkServiceRoleKeyConfiguration();
     }
-  }, [currentSchool?.id, userRole]);
+  }, [currentSchool?.id]);
 
   // Redirect non-admin users (school-specific admin check)
   if (!isSchoolAdmin) {
@@ -164,64 +159,7 @@ const Settings = () => {
     }
   };
 
-  const checkServiceRoleKeyConfiguration = async () => {
-    if (userRole !== 'superadmin') return;
-    
-    setIsCheckingServiceRoleKey(true);
-    try {
-      const { data, error } = await supabase
-        .from('app_secrets')
-        .select('secret_name')
-        .eq('secret_name', 'supabase_service_role_key')
-        .single();
 
-      setIsServiceRoleKeyConfigured(!!data && !error);
-    } catch (error) {
-      console.error('Error checking service role key:', error);
-      setIsServiceRoleKeyConfigured(false);
-    } finally {
-      setIsCheckingServiceRoleKey(false);
-    }
-  };
-
-  const handleSaveServiceRoleKey = async () => {
-    if (!serviceRoleKey.trim()) {
-      toast({
-        title: "Error",
-        description: "Please enter a valid service role key",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsSavingServiceRoleKey(true);
-    try {
-      const { data, error } = await supabase.rpc('set_service_role_key', {
-        key_value: serviceRoleKey.trim()
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      toast({
-        title: "Service role key configured",
-        description: "Automated exports are now ready to use",
-      });
-      
-      setServiceRoleKey('');
-      setIsServiceRoleKeyConfigured(true);
-    } catch (error) {
-      console.error('Error saving service role key:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : 'Failed to save service role key',
-        variant: "destructive"
-      });
-    } finally {
-      setIsSavingServiceRoleKey(false);
-    }
-  };
 
   const handleSaveGoogleSheetUrl = async () => {
     if (!currentSchool) return;
@@ -1141,102 +1079,7 @@ const Settings = () => {
         </CardContent>
       </Card>
 
-      {/* Service Role Key Configuration - For Super Admins Only */}
-      {userRole === 'superadmin' && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Building2 className="h-5 w-5 mr-2" />
-              Automated Export Configuration
-            </CardTitle>
-            <CardDescription>Configure the service role key required for automated lesson exports</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="bg-yellow-50 p-4 rounded-lg">
-              <div className="flex items-start">
-                <AlertTriangle className="h-5 w-5 text-yellow-600 mr-3 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm text-yellow-800 font-medium mb-1">
-                    Service Role Key Required
-                  </p>
-                  <p className="text-sm text-yellow-700">
-                    To enable automated exports, you need to configure your Supabase service role key. 
-                    This key allows the system to authenticate with your project for scheduled exports.
-                  </p>
-                </div>
-              </div>
-            </div>
 
-            <div className="flex items-center space-x-2">
-              {isCheckingServiceRoleKey ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : isServiceRoleKeyConfigured ? (
-                <CheckCircle className="h-4 w-4 text-green-600" />
-              ) : (
-                <XCircle className="h-4 w-4 text-red-600" />
-              )}
-              <span className={`text-sm font-medium ${
-                isServiceRoleKeyConfigured ? 'text-green-700' : 'text-red-700'
-              }`}>
-                {isCheckingServiceRoleKey 
-                  ? 'Checking configuration...'
-                  : isServiceRoleKeyConfigured 
-                    ? 'Service role key is configured' 
-                    : 'Service role key not configured'
-                }
-              </span>
-            </div>
-
-            {!isServiceRoleKeyConfigured && (
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="serviceRoleKey">Supabase Service Role Key</Label>
-                  <Input
-                    id="serviceRoleKey"
-                    type="password"
-                    value={serviceRoleKey}
-                    onChange={(e) => setServiceRoleKey(e.target.value)}
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    className="mt-1"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Find this in your Supabase project dashboard under Settings → API → service_role key
-                  </p>
-                </div>
-                
-                <Button
-                  onClick={handleSaveServiceRoleKey}
-                  disabled={isSavingServiceRoleKey || !serviceRoleKey.trim()}
-                  className="w-full"
-                >
-                  {isSavingServiceRoleKey ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Configuring...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Configure Service Role Key
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-
-            {isServiceRoleKeyConfigured && (
-              <div className="bg-green-50 p-3 rounded-lg">
-                <div className="flex items-center">
-                  <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
-                  <p className="text-sm text-green-800">
-                    <strong>Automated exports ready!</strong> Users can now configure automated exports in their schools.
-                  </p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {/* Export Lessons Section - For Admins and Super Admins */}
       {(userRole === 'admin' || userRole === 'superadmin') && (
@@ -1262,37 +1105,7 @@ const Settings = () => {
               </div>
             </div>
 
-            {!isServiceRoleKeyConfigured && userRole === 'superadmin' && (
-              <div className="bg-red-50 p-4 rounded-lg">
-                <div className="flex items-start">
-                  <XCircle className="h-5 w-5 text-red-600 mr-3 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm text-red-800 font-medium mb-1">
-                      Automated Exports Not Available
-                    </p>
-                    <p className="text-sm text-red-700">
-                      Service role key is not configured. Please configure it in the "Automated Export Configuration" section above to enable automated exports.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {!isServiceRoleKeyConfigured && userRole === 'admin' && (
-              <div className="bg-yellow-50 p-4 rounded-lg">
-                <div className="flex items-start">
-                  <AlertTriangle className="h-5 w-5 text-yellow-600 mr-3 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm text-yellow-800 font-medium mb-1">
-                      Automated Exports Not Available
-                    </p>
-                    <p className="text-sm text-yellow-700">
-                      Automated exports require additional configuration by a superadmin. Manual exports are still available.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
             
             <div className="space-y-4">
               <div className="space-y-2">
@@ -1341,7 +1154,6 @@ const Settings = () => {
                   <Select 
                     value={autoExportFrequency} 
                     onValueChange={(value) => setAutoExportFrequency(value as 'none' | 'hourly' | 'daily' | 'weekly')}
-                    disabled={!isServiceRoleKeyConfigured}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select frequency" />
@@ -1354,10 +1166,7 @@ const Settings = () => {
                     </SelectContent>
                   </Select>
                   <p className="text-sm text-muted-foreground">
-                    {isServiceRoleKeyConfigured 
-                      ? "How often to automatically export lessons"
-                      : "Automated exports require service role key configuration"
-                    }
+                    How often to automatically export lessons
                   </p>
                 </div>
               </div>
