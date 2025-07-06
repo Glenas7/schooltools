@@ -96,10 +96,14 @@ const exportLessonsToSheet = async (schoolId: string): Promise<void> => {
   }
   
   const sheetTab = school.export_google_sheet_tab || 'lessons';
-  console.log('Export configuration:', { spreadsheetId, sheetTab });
+  console.log('Export configuration:', { 
+    spreadsheetId, 
+    sheetTab, 
+    exportActiveLessonsOnly: school.export_active_lessons_only 
+  });
   
-  // Fetch all lessons with related data
-  const { data: lessons, error: lessonsError } = await supabase
+  // Build lessons query with optional active filter
+  let lessonsQuery = supabase
     .from('lessons')
     .select(`
       student_name,
@@ -114,8 +118,17 @@ const exportLessonsToSheet = async (schoolId: string): Promise<void> => {
       ),
       locations (name)
     `)
-    .eq('school_id', schoolId)
-    .order('student_name');
+    .eq('school_id', schoolId);
+    
+      // Apply active lessons filter if enabled
+    if (school.export_active_lessons_only) {
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+      lessonsQuery = lessonsQuery
+        .lte('start_date', today)
+        .gt('end_date', today);
+    }
+  
+  const { data: lessons, error: lessonsError } = await lessonsQuery.order('student_name');
     
   if (lessonsError) {
     throw new Error(`Error fetching lessons: ${lessonsError.message}`);

@@ -50,6 +50,7 @@ export const updateExportSettings = async (
     export_google_sheet_url?: string;
     export_google_sheet_tab?: string;
     auto_export_frequency?: 'none' | 'hourly' | 'daily' | 'weekly';
+    export_active_lessons_only?: boolean;
   }
 ): Promise<{ success: boolean; error?: string }> => {
   try {

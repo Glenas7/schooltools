@@ -10,6 +10,7 @@ import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Sav
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { Loader2 } from 'lucide-react';
 import { compareLessons, ComparisonResult, SheetLesson, DbLesson, wouldCauseConflict, alignLessonWithSheet } from '../lib/lessonComparisonService';
 import { useToast } from '@/hooks/use-toast';
@@ -61,6 +62,7 @@ const Settings = () => {
   const [exportGoogleSheetUrl, setExportGoogleSheetUrl] = useState(currentSchool?.export_google_sheet_url || '');
   const [exportGoogleSheetTab, setExportGoogleSheetTab] = useState(currentSchool?.export_google_sheet_tab || 'lessons');
   const [autoExportFrequency, setAutoExportFrequency] = useState(currentSchool?.auto_export_frequency || 'none');
+  const [exportActiveLessonsOnly, setExportActiveLessonsOnly] = useState(currentSchool?.export_active_lessons_only || false);
   const [isSavingExportSettings, setIsSavingExportSettings] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportLogs, setExportLogs] = useState<any[]>([]);
@@ -85,6 +87,7 @@ const Settings = () => {
     setExportGoogleSheetUrl(currentSchool?.export_google_sheet_url || '');
     setExportGoogleSheetTab(currentSchool?.export_google_sheet_tab || 'lessons');
     setAutoExportFrequency(currentSchool?.auto_export_frequency || 'none');
+    setExportActiveLessonsOnly(currentSchool?.export_active_lessons_only || false);
   }, [
     currentSchool?.google_sheet_url, 
     currentSchool?.google_sheet_name, 
@@ -97,7 +100,8 @@ const Settings = () => {
     currentSchool?.description,
     currentSchool?.export_google_sheet_url,
     currentSchool?.export_google_sheet_tab,
-    currentSchool?.auto_export_frequency
+    currentSchool?.auto_export_frequency,
+    currentSchool?.export_active_lessons_only
   ]);
 
   // Fetch lesson count without end dates when school changes
@@ -537,7 +541,8 @@ const Settings = () => {
       const result = await updateExportSettings(currentSchool.id, {
         export_google_sheet_url: exportGoogleSheetUrl || null,
         export_google_sheet_tab: exportGoogleSheetTab || 'lessons',
-        auto_export_frequency: autoExportFrequency
+        auto_export_frequency: autoExportFrequency,
+        export_active_lessons_only: exportActiveLessonsOnly
       });
 
       if (!result.success) {
@@ -1171,6 +1176,22 @@ const Settings = () => {
                 </div>
               </div>
               
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="space-y-1">
+                    <Label htmlFor="export-active-only">Export Active Lessons Only</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Only export lessons that are currently active (start date ≤ today, end date {'>'} today)
+                    </p>
+                  </div>
+                  <Switch
+                    id="export-active-only"
+                    checked={exportActiveLessonsOnly}
+                    onCheckedChange={setExportActiveLessonsOnly}
+                  />
+                </div>
+              </div>
+              
               <div className="flex gap-2">
                 <Button 
                   onClick={handleSaveExportSettings}
@@ -1215,6 +1236,11 @@ const Settings = () => {
               </ul>
               <p className="text-sm text-green-700 mt-2">
                 All existing data in the target sheet tab will be cleared before export.
+                {exportActiveLessonsOnly && (
+                  <span className="block mt-1 font-medium">
+                    ⚡ Active lessons filter enabled - only currently active lessons will be exported.
+                  </span>
+                )}
               </p>
             </div>
             
