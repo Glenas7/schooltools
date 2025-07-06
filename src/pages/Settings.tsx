@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save, Calendar, Building2, Copy, Download, Upload } from 'lucide-react';
+import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save, Calendar, Building2, Copy, Download, Upload, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -63,6 +63,8 @@ const Settings = () => {
   const [autoExportFrequency, setAutoExportFrequency] = useState(currentSchool?.auto_export_frequency || 'none');
   const [isSavingExportSettings, setIsSavingExportSettings] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportLogs, setExportLogs] = useState<any[]>([]);
+  const [isLoadingExportLogs, setIsLoadingExportLogs] = useState(false);
 
   // Sync google sheet state when currentSchool changes
   useEffect(() => {
@@ -100,6 +102,7 @@ const Settings = () => {
   useEffect(() => {
     if (currentSchool?.id) {
       fetchLessonsWithoutEndDateCount();
+      fetchExportLogs();
     }
   }, [currentSchool?.id]);
 
@@ -126,6 +129,31 @@ const Settings = () => {
       setLessonsWithoutEndDateCount(null);
     } finally {
       setIsFetchingLessonCount(false);
+    }
+  };
+
+  const fetchExportLogs = async () => {
+    if (!currentSchool?.id) return;
+    
+    setIsLoadingExportLogs(true);
+    try {
+      const { data, error } = await supabase
+        .from('export_logs')
+        .select('*')
+        .eq('school_id', currentSchool.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        throw error;
+      }
+
+      setExportLogs(data || []);
+    } catch (error) {
+      console.error('Error fetching export logs:', error);
+      setExportLogs([]);
+    } finally {
+      setIsLoadingExportLogs(false);
     }
   };
 
@@ -554,6 +582,9 @@ const Settings = () => {
         title: "Export successful",
         description: result.message,
       });
+      
+      // Refresh export logs to show the latest export
+      await fetchExportLogs();
     } catch (error) {
       console.error('Error exporting lessons:', error);
       toast({
@@ -561,6 +592,9 @@ const Settings = () => {
         description: error instanceof Error ? error.message : 'Failed to export lessons. Please try again.',
         variant: "destructive"
       });
+      
+      // Refresh export logs to show any error logs
+      await fetchExportLogs();
     } finally {
       setIsExporting(false);
     }
@@ -1171,6 +1205,90 @@ const Settings = () => {
               <p className="text-sm text-green-700 mt-2">
                 All existing data in the target sheet tab will be cleared before export.
               </p>
+            </div>
+            
+            {/* Export Logs Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-gray-900">Export History</h4>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchExportLogs}
+                  disabled={isLoadingExportLogs}
+                >
+                  {isLoadingExportLogs ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Refresh
+                </Button>
+              </div>
+              
+              {isLoadingExportLogs ? (
+                <div className="text-center py-4">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-gray-500" />
+                  <p className="text-sm text-gray-500">Loading export history...</p>
+                </div>
+              ) : exportLogs.length === 0 ? (
+                <div className="text-center py-6 bg-gray-50 rounded-lg">
+                  <Clock className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm text-gray-500">No exports yet</p>
+                  <p className="text-xs text-gray-400 mt-1">Export history will appear here</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {exportLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border ${
+                        log.status === 'completed'
+                          ? 'bg-green-50 border-green-200'
+                          : 'bg-red-50 border-red-200'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        {log.status === 'completed' ? (
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-600" />
+                        )}
+                        <div>
+                          <p className="text-sm font-medium">
+                            {log.export_type === 'manual' ? 'Manual Export' : 'Automated Export'}
+                          </p>
+                          {log.error_message && (
+                            <p className="text-xs text-red-600 mt-1">{log.error_message}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">
+                          {new Date(log.created_at).toLocaleDateString()}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(log.created_at).toLocaleTimeString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {autoExportFrequency !== 'none' && exportGoogleSheetUrl && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <div className="flex items-center">
+                    <Clock className="h-4 w-4 text-blue-600 mr-2" />
+                    <p className="text-sm text-blue-800">
+                      <strong>Automated exports enabled:</strong> {autoExportFrequency}
+                    </p>
+                  </div>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Next export will run automatically based on your selected frequency
+                  </p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
