@@ -16,19 +16,25 @@ DECLARE
     service_role_key text;
     request_result bigint;
 BEGIN
-    -- Get the Supabase URL and service role key from environment/settings
-    -- Note: In production, these should be configured as secrets
-    supabase_url := current_setting('app.supabase_url', true);
-    service_role_key := current_setting('app.supabase_service_role_key', true);
+    -- Use hardcoded values for the current project
+    -- This is safe since this function is only accessible to authenticated users
+    supabase_url := 'https://xetfugvbiewwhpsxohne.supabase.co';
     
-    -- If settings are not configured, use defaults (this should be configured in production)
-    IF supabase_url IS NULL THEN
-        supabase_url := 'https://xetfugvbiewwhpsxohne.supabase.co';
+    -- For automated exports, we need to use a service role key
+    -- This should be configured via Supabase secrets or environment variables
+    -- For now, we'll use a placeholder that needs to be replaced in production
+    service_role_key := current_setting('app.service_role_key', true);
+    
+    IF service_role_key IS NULL THEN
+        -- Fallback: Try to get from a secrets table (if implemented)
+        SELECT secret_value INTO service_role_key 
+        FROM app_secrets 
+        WHERE secret_name = 'supabase_service_role_key' 
+        LIMIT 1;
     END IF;
     
     IF service_role_key IS NULL THEN
-        -- This should be set as a database setting in production
-        RAISE EXCEPTION 'Service role key not configured for automated exports';
+        RAISE EXCEPTION 'Service role key not configured. Please contact administrator to configure automated exports.';
     END IF;
     
     -- Make HTTP request to the export edge function
