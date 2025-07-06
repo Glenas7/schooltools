@@ -6,8 +6,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save, Calendar, Building2, Copy } from 'lucide-react';
+import { AlertCircle, Check, X, AlertTriangle, RefreshCw, Zap, ExternalLink, Save, Calendar, Building2, Copy, Download, Upload } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { compareLessons, ComparisonResult, SheetLesson, DbLesson, wouldCauseConflict, alignLessonWithSheet } from '../lib/lessonComparisonService';
@@ -16,6 +17,7 @@ import { useSchool } from '../contexts/SchoolContext';
 import { supabase } from '../lib/supabaseClient';
 import AdminUserManagement from '../components/settings/AdminUserManagement';
 import { useStudentNames } from '../hooks/useStudentNames';
+import { exportLessonsToSheet, updateExportSettings } from '../lib/exportLessonsService';
 
 const Settings = () => {
   const { user } = useAuth();
@@ -55,6 +57,13 @@ const Settings = () => {
   const [schoolDescription, setSchoolDescription] = useState(currentSchool?.description || '');
   const [isSavingSchoolDescription, setIsSavingSchoolDescription] = useState(false);
 
+  // Export lessons state
+  const [exportGoogleSheetUrl, setExportGoogleSheetUrl] = useState(currentSchool?.export_google_sheet_url || '');
+  const [exportGoogleSheetTab, setExportGoogleSheetTab] = useState(currentSchool?.export_google_sheet_tab || 'lessons');
+  const [autoExportFrequency, setAutoExportFrequency] = useState(currentSchool?.auto_export_frequency || 'none');
+  const [isSavingExportSettings, setIsSavingExportSettings] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
   // Sync google sheet state when currentSchool changes
   useEffect(() => {
     setGoogleSheetUrl(currentSchool?.google_sheet_url || '');
@@ -68,6 +77,10 @@ const Settings = () => {
     setSchoolYearEndDate(currentSchool?.school_year_end_date || '');
     setSchoolName(currentSchool?.name || '');
     setSchoolDescription(currentSchool?.description || '');
+    
+    setExportGoogleSheetUrl(currentSchool?.export_google_sheet_url || '');
+    setExportGoogleSheetTab(currentSchool?.export_google_sheet_tab || 'lessons');
+    setAutoExportFrequency(currentSchool?.auto_export_frequency || 'none');
   }, [
     currentSchool?.google_sheet_url, 
     currentSchool?.google_sheet_name, 
@@ -77,7 +90,10 @@ const Settings = () => {
     currentSchool?.google_sheet_lessons_range,
     currentSchool?.school_year_end_date,
     currentSchool?.name,
-    currentSchool?.description
+    currentSchool?.description,
+    currentSchool?.export_google_sheet_url,
+    currentSchool?.export_google_sheet_tab,
+    currentSchool?.auto_export_frequency
   ]);
 
   // Fetch lesson count without end dates when school changes
@@ -478,6 +494,75 @@ const Settings = () => {
         description: "Failed to copy join code to clipboard.",
         variant: "destructive"
       });
+    }
+  };
+
+  const handleSaveExportSettings = async () => {
+    if (!currentSchool) return;
+    
+    setIsSavingExportSettings(true);
+    try {
+      const result = await updateExportSettings(currentSchool.id, {
+        export_google_sheet_url: exportGoogleSheetUrl || null,
+        export_google_sheet_tab: exportGoogleSheetTab || 'lessons',
+        auto_export_frequency: autoExportFrequency
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to save export settings');
+      }
+
+      await refreshSchool();
+      
+      toast({
+        title: "Export settings saved",
+        description: "The lesson export settings have been saved successfully.",
+      });
+    } catch (error) {
+      console.error('Error saving export settings:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save export settings. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingExportSettings(false);
+    }
+  };
+
+  const handleExportLessons = async () => {
+    if (!currentSchool) return;
+    
+    if (!exportGoogleSheetUrl) {
+      toast({
+        title: "Configuration required",
+        description: "Please configure the export Google Sheet URL first.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsExporting(true);
+    try {
+      const result = await exportLessonsToSheet(currentSchool.id);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to export lessons');
+      }
+      
+      toast({
+        title: "Export successful",
+        description: result.message,
+      });
+    } catch (error) {
+      console.error('Error exporting lessons:', error);
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : 'Failed to export lessons. Please try again.',
+        variant: "destructive"
+      });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -955,6 +1040,141 @@ const Settings = () => {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Export Lessons Section - For Admins and Super Admins */}
+      {(userRole === 'admin' || userRole === 'superadmin') && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Download className="h-5 w-5 mr-2" />
+              Export Lessons
+            </CardTitle>
+            <CardDescription>Export all lessons to Google Sheets for external use and analysis</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <div className="flex items-start">
+                <AlertTriangle className="h-5 w-5 mr-2 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-blue-900 mb-1">Google Sheets Access Required</h4>
+                  <p className="text-sm text-blue-800">
+                    To export lessons, you need to give our Google service account <strong>edit access</strong> to your Google Sheet. 
+                    Share the sheet with this email: <code className="bg-blue-100 px-1 rounded">schooltools@schooltools-459418.iam.gserviceaccount.com</code>
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="export-google-sheet-url">Export Google Sheet URL</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="export-google-sheet-url"
+                    type="url"
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    value={exportGoogleSheetUrl}
+                    onChange={(e) => setExportGoogleSheetUrl(e.target.value)}
+                    className="flex-1"
+                  />
+                  {exportGoogleSheetUrl && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(exportGoogleSheetUrl, '_blank')}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  URL of the Google Sheet where lessons will be exported
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="export-google-sheet-tab">Sheet Tab Name</Label>
+                  <Input
+                    id="export-google-sheet-tab"
+                    type="text"
+                    placeholder="lessons"
+                    value={exportGoogleSheetTab}
+                    onChange={(e) => setExportGoogleSheetTab(e.target.value)}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Name of the worksheet tab to export to
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="auto-export-frequency">Auto-Export Frequency</Label>
+                  <Select value={autoExportFrequency} onValueChange={(value) => setAutoExportFrequency(value as 'none' | 'hourly' | 'daily' | 'weekly')}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (Manual only)</SelectItem>
+                      <SelectItem value="hourly">Hourly</SelectItem>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    How often to automatically export lessons
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  onClick={handleSaveExportSettings}
+                  disabled={isSavingExportSettings}
+                  variant="outline"
+                >
+                  {isSavingExportSettings ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  Save Settings
+                </Button>
+                
+                <Button 
+                  onClick={handleExportLessons}
+                  disabled={isExporting || !exportGoogleSheetUrl}
+                  variant="default"
+                >
+                  {isExporting ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-2" />
+                  )}
+                  Export Now
+                </Button>
+              </div>
+            </div>
+            
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h4 className="font-medium text-green-900 mb-2">Export Data Includes:</h4>
+              <ul className="text-sm text-green-800 space-y-1">
+                <li>• Student Name</li>
+                <li>• Duration (minutes)</li>
+                <li>• Subject</li>
+                <li>• Teacher (or "Unassigned")</li>
+                <li>• Location (or "No location")</li>
+                <li>• Day of Week</li>
+                <li>• Start Time</li>
+                <li>• Start Date</li>
+                <li>• End Date</li>
+              </ul>
+              <p className="text-sm text-green-700 mt-2">
+                All existing data in the target sheet tab will be cleared before export.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Admin User Management Section - For Admins and Super Admins */}
       {(userRole === 'admin' || userRole === 'superadmin') && (
