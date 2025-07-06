@@ -98,13 +98,7 @@ export interface Location {
   updated_at: string;
 }
 
-// Lesson Location relationship type
-export interface LessonLocation {
-  id: string;
-  lesson_id: string;
-  location_id: string;
-  created_at: string;
-}
+// Note: LessonLocation table has been removed in favor of location_id field in lessons table
 
 // Lesson with location information
 export interface LessonWithLocation extends Lesson {
