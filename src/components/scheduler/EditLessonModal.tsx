@@ -539,7 +539,7 @@ const EditLessonModal = ({
           
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <UILabel htmlFor="start-date">Start Date (Optional)</UILabel>
+              <UILabel htmlFor="start-date">Start Date</UILabel>
             <Input
               id="start-date"
               type="date"
@@ -549,7 +549,7 @@ const EditLessonModal = ({
           </div>
           
           <div className="space-y-2">
-              <UILabel htmlFor="end-date">End Date (Optional)</UILabel>
+              <UILabel htmlFor="end-date">End Date* (Optional)</UILabel>
             <Input
               id="end-date"
               type="date"
@@ -559,6 +559,9 @@ const EditLessonModal = ({
             />
             </div>
           </div>
+          <span className="text-xs italic text-gray-500">
+            *This should be the first day on which there will no longer be a lesson, not the last day with a lesson.
+          </span>
         </div>
         
         <DialogFooter>
