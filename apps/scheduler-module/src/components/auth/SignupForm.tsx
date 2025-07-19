@@ -183,21 +183,23 @@ const SignupForm = () => {
         // Navigate to school selection after successful signup (which will show school creation for new users)
         navigate('/school-select');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Signup error:', error);
       
       // Handle specific error messages for better UX
       let errorMessage = "Failed to create account. Please try again.";
       
-      if (error.message?.includes('User already registered') || 
-          error.message?.includes('email address is already registered')) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      if (errorMsg?.includes('User already registered') || 
+          errorMsg?.includes('email address is already registered')) {
         errorMessage = "An account with this email address already exists. Please use a different email or try signing in instead.";
-      } else if (error.message?.includes('invalid email')) {
+      } else if (errorMsg?.includes('invalid email')) {
         errorMessage = "Please enter a valid email address.";
-      } else if (error.message?.includes('password')) {
+      } else if (errorMsg?.includes('password')) {
         errorMessage = "Password must be at least 6 characters long.";
-      } else if (error.message) {
-        errorMessage = error.message;
+      } else if (errorMsg) {
+        errorMessage = errorMsg;
       }
       
       toast({

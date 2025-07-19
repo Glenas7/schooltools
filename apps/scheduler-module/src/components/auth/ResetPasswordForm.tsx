@@ -74,12 +74,13 @@ const ResetPasswordForm = () => {
         navigate('/login');
       }, 2000);
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error resetting password:', err);
-      setError(err.message || 'Failed to reset password. Please try again.');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to reset password. Please try again.';
+      setError(errorMsg);
       toast({
         title: 'Password reset failed',
-        description: err.message || 'There was an error resetting your password. Please try again.',
+        description: errorMsg,
         variant: 'destructive',
       });
     } finally {

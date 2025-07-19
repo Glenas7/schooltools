@@ -609,7 +609,7 @@ const Schedule = () => {
     })));
     
     // If lessons array is empty, try to get lesson from global drag context
-    let lesson = lessons.find(l => l.id === lessonId);
+    const lesson = lessons.find(l => l.id === lessonId);
     
     if (!lesson && lessons.length === 0) {
       console.log("[DEBUG] handleLessonDrop - lessons not loaded, checking global drag context...");

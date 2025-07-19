@@ -48,7 +48,7 @@ const TeachersProvider: React.FC<{ children: React.ReactNode }> = ({ children })
 
          if (!functionError && teachersData) {
            // Get subject assignments for all teachers
-           const teacherIds = teachersData.map((t: any) => t.id);
+           const teacherIds = teachersData.map((t: User) => t.id);
            const { data: subjectAssignments } = await supabase
              .from('teachers_subjects')
              .select('teacher_id, subject_id')
@@ -65,7 +65,7 @@ const TeachersProvider: React.FC<{ children: React.ReactNode }> = ({ children })
            }, {} as Record<string, string[]>);
 
            // Format teachers with subjects
-           const formattedTeachers: Teacher[] = teachersData.map((teacher: any) => ({
+           const formattedTeachers: Teacher[] = teachersData.map((teacher: User) => ({
              id: teacher.id,
              name: teacher.name,
              email: teacher.email,

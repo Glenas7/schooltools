@@ -908,7 +908,7 @@ export const compareLessons = async (schoolId: string): Promise<ComparisonResult
     // Process database lessons in score order (best matches first)
     dbLessonsWithScores.forEach(({ dbLesson }) => {
       let bestMatch: { sheetLesson: SheetLesson; sheetIndex: number; score: number } | null = null;
-      let allPotentialMatches: { sheetLesson: SheetLesson; sheetIndex: number; score: number }[] = [];
+      const allPotentialMatches: { sheetLesson: SheetLesson; sheetIndex: number; score: number }[] = [];
       
       // Find all potential matches and their scores
       for (let sheetIndex = 0; sheetIndex < validSheetLessons.length; sheetIndex++) {

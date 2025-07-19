@@ -24,31 +24,33 @@ const LoginForm = () => {
 
     try {
       await login(email, password);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Login error:', error);
       
       // Provide more specific error messages
       let errorMessage = "Invalid email or password.";
       let errorTitle = "Login failed";
       
-      if (error.message?.includes('Invalid login credentials') || 
-          error.message?.includes('invalid credentials')) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      if (errorMsg?.includes('Invalid login credentials') || 
+          errorMsg?.includes('invalid credentials')) {
         errorMessage = "The email or password you entered is incorrect. Please check your credentials and try again.";
-      } else if (error.message?.includes('Email not confirmed')) {
+      } else if (errorMsg?.includes('Email not confirmed')) {
         errorTitle = "Email not verified";
         errorMessage = "Please check your email and click the verification link before signing in.";
-      } else if (error.message?.includes('Too many requests')) {
+      } else if (errorMsg?.includes('Too many requests')) {
         errorTitle = "Too many attempts";
         errorMessage = "Too many login attempts. Please wait a moment before trying again.";
-      } else if (error.message?.includes('User not found') || 
-                 error.message?.includes('email address is not registered')) {
+      } else if (errorMsg?.includes('User not found') || 
+                 errorMsg?.includes('email address is not registered')) {
         errorTitle = "Account not found";
         errorMessage = "No account found with this email address. Please check your email or create a new account.";
-      } else if (error.message?.includes('signup')) {
+      } else if (errorMsg?.includes('signup')) {
         errorTitle = "Account setup incomplete";
         errorMessage = "It looks like your account setup wasn't completed. Please try signing up again or contact support.";
-      } else if (error.message) {
-        errorMessage = error.message;
+      } else if (errorMsg) {
+        errorMessage = errorMsg;
       }
       
       toast({

@@ -468,7 +468,7 @@ const LessonsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) 
     setLoading(true); setError(null);
     try {
       // Format dates for the database
-      const formattedData: Record<string, any> = {
+      const formattedData: Record<string, unknown> = {
         student_name: lessonData.student_name,
         duration_minutes: lessonData.duration,
         teacher_id: lessonData.teacher_id || null,

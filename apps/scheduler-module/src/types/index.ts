@@ -1,5 +1,15 @@
 export type UserRole = 'admin' | 'teacher' | 'superadmin';
 
+// Module user interface for settings management
+export interface ModuleUser {
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  user_role: UserRole;
+  granted_by: string;
+  granted_at: string;
+}
+
 // User type for the users table
 export interface User {
   id: string;
@@ -30,7 +40,7 @@ export interface School {
   export_schedule_day?: number; // 1=Monday, 7=Sunday
   export_timezone?: string; // Timezone string (e.g., 'Europe/Madrid', 'America/New_York')
   school_year_end_date?: string; // YYYY-MM-DD format
-  settings?: Record<string, any>;
+  settings?: Record<string, unknown>;
   active: boolean;
   deleted: boolean;
   created_at: string;

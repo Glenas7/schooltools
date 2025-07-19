@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Trash2, Plus, AlertTriangle, Shield, ShieldCheck, User, Mail, Calendar } from 'lucide-react';
 import { useSchool } from '../../contexts/SchoolContextWrapper';
+import { ModuleUser } from '../../types';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -66,11 +67,11 @@ const SchedulerUserManagement = () => {
       }
 
       // Filter to only show admin roles (superadmin and admin)
-      const adminUsers = (moduleUsers || []).filter((user: any) => 
+      const adminUsers = (moduleUsers || []).filter((user: ModuleUser) => 
         user.user_role === 'superadmin' || user.user_role === 'admin'
       );
 
-      setSchedulerUsers(adminUsers.map((user: any) => ({
+      setSchedulerUsers(adminUsers.map((user: ModuleUser) => ({
         user_id: user.user_id,
         user_name: user.user_name,
         user_email: user.user_email,
