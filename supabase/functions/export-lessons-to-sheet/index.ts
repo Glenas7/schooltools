@@ -103,7 +103,7 @@ const exportLessonsToSheet = async (schoolId: string, source: string = 'manual')
   });
   
   // Build lessons query with optional active filter
-  // NOTE: Updated to use modular role system - lessons connect to users through user_schools_modules
+  // NOTE: Alternative approach - join manually to avoid relationship cache issues
   let lessonsQuery = supabase
     .from('lessons')
     .select(`
@@ -113,11 +113,10 @@ const exportLessonsToSheet = async (schoolId: string, source: string = 'manual')
       start_time,
       start_date,
       end_date,
-      subjects (name),
-      user_schools_modules!lessons_teacher_module_fkey (
-        users (name)
-      ),
-      locations (name)
+      teacher_id,
+      subject_id,
+      location_id,
+      module_id
     `)
     .eq('school_id', schoolId);
     
@@ -136,6 +135,43 @@ const exportLessonsToSheet = async (schoolId: string, source: string = 'manual')
   }
   
   console.log(`Fetched ${lessons?.length || 0} lessons`);
+  
+  // Fetch related data separately to avoid relationship cache issues
+  const [subjectsResult, locationsResult, teachersResult] = await Promise.all([
+    // Get subjects
+    supabase
+      .from('subjects')
+      .select('id, name')
+      .eq('school_id', schoolId),
+    
+    // Get locations  
+    supabase
+      .from('locations')
+      .select('id, name')
+      .eq('school_id', schoolId),
+    
+    // Get teachers through user_schools_modules
+    supabase
+      .from('user_schools_modules')
+      .select(`
+        user_id,
+        users (id, name)
+      `)
+      .eq('school_id', schoolId)
+      .eq('role', 'teacher')
+      .eq('active', true)
+  ]);
+  
+  if (subjectsResult.error) throw new Error(`Error fetching subjects: ${subjectsResult.error.message}`);
+  if (locationsResult.error) throw new Error(`Error fetching locations: ${locationsResult.error.message}`);
+  if (teachersResult.error) throw new Error(`Error fetching teachers: ${teachersResult.error.message}`);
+  
+  // Create lookup maps
+  const subjectsMap = new Map(subjectsResult.data?.map(s => [s.id, s.name]) || []);
+  const locationsMap = new Map(locationsResult.data?.map(l => [l.id, l.name]) || []);
+  const teachersMap = new Map(teachersResult.data?.map(t => [t.user_id, t.users?.name]) || []);
+  
+  console.log(`Loaded ${subjectsMap.size} subjects, ${locationsMap.size} locations, ${teachersMap.size} teachers`);
   
   // Transform data for export
   const exportData: string[][] = [
@@ -159,9 +195,9 @@ const exportLessonsToSheet = async (schoolId: string, source: string = 'manual')
       exportData.push([
         lesson.student_name || '',
         (lesson.duration_minutes || 0).toString(),
-        lesson.subjects?.name || '',
-        lesson.user_schools_modules?.users?.name || 'Unassigned',
-        lesson.locations?.name || 'No location',
+        subjectsMap.get(lesson.subject_id) || '',
+        teachersMap.get(lesson.teacher_id) || 'Unassigned',
+        locationsMap.get(lesson.location_id) || 'No location',
         getDayName(lesson.day_of_week),
         lesson.start_time || 'Not scheduled',
         lesson.start_date || 'Not set',
