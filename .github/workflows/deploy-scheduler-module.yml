@@ -1,0 +1,48 @@
+name: Deploy Scheduler Module
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/scheduler-module/**'
+      - 'packages/shared-auth/**'
+      - '.github/workflows/deploy-scheduler-module.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd apps/scheduler-module && npm ci
+          
+      - name: Build Scheduler Module
+        run: |
+          cd apps/scheduler-module && npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_CENTRAL_HUB_URL: https://app.schooltools.online
+          VITE_CURRENT_SUBDOMAIN: scheduler
+          VITE_MODULE_NAME: scheduler
+          VITE_MODULE_DISPLAY_NAME: Lesson Scheduler
+          NODE_ENV: production
+          
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_SCHEDULER_PROJECT_ID }}
+          working-directory: apps/scheduler-module
+          vercel-args: '--prod' 
