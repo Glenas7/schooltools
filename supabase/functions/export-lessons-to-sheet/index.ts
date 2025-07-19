@@ -103,6 +103,7 @@ const exportLessonsToSheet = async (schoolId: string, source: string = 'manual')
   });
   
   // Build lessons query with optional active filter
+  // NOTE: Updated to use modular role system - lessons connect to users through user_schools_modules
   let lessonsQuery = supabase
     .from('lessons')
     .select(`
@@ -113,7 +114,9 @@ const exportLessonsToSheet = async (schoolId: string, source: string = 'manual')
       start_date,
       end_date,
       subjects (name),
-      users (name),
+      user_schools_modules!lessons_teacher_module_fkey (
+        users (name)
+      ),
       locations (name)
     `)
     .eq('school_id', schoolId);
@@ -157,7 +160,7 @@ const exportLessonsToSheet = async (schoolId: string, source: string = 'manual')
         lesson.student_name || '',
         (lesson.duration_minutes || 0).toString(),
         lesson.subjects?.name || '',
-        lesson.users?.name || 'Unassigned',
+        lesson.user_schools_modules?.users?.name || 'Unassigned',
         lesson.locations?.name || 'No location',
         getDayName(lesson.day_of_week),
         lesson.start_time || 'Not scheduled',
