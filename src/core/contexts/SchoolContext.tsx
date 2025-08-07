@@ -39,7 +39,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         throw new Error('School not found');
       }
 
-      // Then check user's role for this school
+      // Check user's role for this school (both school-level and module-level access)
+      // First try school-level access
       const { data: userSchoolData, error: userSchoolError } = await supabase
         .from('user_schools')
         .select('role')
@@ -48,12 +49,39 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq('active', true)
         .single();
 
-      if (userSchoolError) {
+      let userRole: string | null = null;
+
+      if (!userSchoolError && userSchoolData) {
+        // User has school-level access
+        userRole = userSchoolData.role;
+      } else {
+        // Try module-level access
+        const { data: moduleAccessData, error: moduleError } = await supabase
+          .from('user_schools_modules')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('school_id', schoolData.id)
+          .eq('active', true);
+
+        if (!moduleError && moduleAccessData && moduleAccessData.length > 0) {
+          // User has module-level access - get the highest role
+          const roles = moduleAccessData.map(item => item.role);
+          if (roles.includes('superadmin')) {
+            userRole = 'superadmin';
+          } else if (roles.includes('admin')) {
+            userRole = 'admin';
+          } else {
+            userRole = 'teacher';
+          }
+        }
+      }
+
+      if (!userRole) {
         throw new Error('Access denied to this school');
       }
 
       setCurrentSchool(schoolData);
-      setUserRole(userSchoolData.role as UserRole);
+      setUserRole(userRole as UserRole);
     } catch (err) {
       console.error('Error fetching school:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch school');
