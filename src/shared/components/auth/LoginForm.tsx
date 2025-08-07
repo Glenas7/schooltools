@@ -24,22 +24,35 @@ const LoginForm = () => {
       await login(email, password);
     } catch (error: unknown) {
       console.error('Login error:', error);
+      console.log('Error details:', { 
+        error, 
+        message: error instanceof Error ? error.message : String(error),
+        name: error instanceof Error ? error.name : 'unknown',
+        stack: error instanceof Error ? error.stack : 'no stack'
+      });
       
       // Provide more specific error messages
       let errorMessage = "Invalid email or password.";
       let errorTitle = "Login failed";
       
+      // Get error message from multiple possible sources
       const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorString = JSON.stringify(error);
+      const errorName = error instanceof Error ? error.name : '';
+      
+      // Check error message, error name, and stringified error for patterns
+      const allErrorContent = `${errorMsg} ${errorString} ${errorName}`.toLowerCase();
       
       if (errorMsg?.includes('Invalid login credentials') || 
           errorMsg?.includes('invalid credentials')) {
         errorMessage = "The email or password you entered is incorrect. Please check your credentials and try again.";
-      } else if (errorMsg?.includes('Email not confirmed') || 
-                 errorMsg?.includes('email_not_confirmed') ||
-                 errorMsg?.includes('not confirmed') ||
-                 errorMsg?.includes('email verification') ||
-                 errorMsg?.includes('confirm your email') ||
-                 errorMsg?.includes('email_unconfirmed')) {
+      } else if (allErrorContent.includes('email not confirmed') || 
+                 allErrorContent.includes('email_not_confirmed') ||
+                 allErrorContent.includes('not confirmed') ||
+                 allErrorContent.includes('email verification') ||
+                 allErrorContent.includes('confirm your email') ||
+                 allErrorContent.includes('email_unconfirmed') ||
+                 allErrorContent.includes('authapierror: email not confirmed')) {
         errorTitle = "Email not verified";
         errorMessage = "Please check your email inbox and click the verification link we sent you before signing in. Don't see the email? Check your spam folder.";
       } else if (errorMsg?.includes('Too many requests')) {
@@ -55,6 +68,8 @@ const LoginForm = () => {
       } else if (errorMsg) {
         errorMessage = errorMsg;
       }
+      
+      console.log('About to show toast:', { errorTitle, errorMessage });
       
       toast({
         title: errorTitle,
