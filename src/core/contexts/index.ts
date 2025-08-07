@@ -86,7 +86,7 @@ export const useModules = () => {
           role,
           granted_by,
           granted_at,
-          users!inner(
+          users!user_schools_modules_user_id_fkey(
             id,
             name,
             email
