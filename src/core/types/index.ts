@@ -42,6 +42,7 @@ export interface SchoolWithRole extends School {
   role: UserRole;
   userRole: UserRole; // Alias for backward compatibility
   modules?: Module[];
+  accessType?: 'school' | 'module'; // Type of access: school-level or module-level
 }
 
 export interface UserSchool {

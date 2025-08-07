@@ -84,7 +84,8 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
           ...school,
           role,
           userRole: role, // Alias for backward compatibility
-          modules: schoolModules
+          modules: schoolModules,
+          accessType: item.access_type // Add access type for Manage button logic
         };
       }) || []);
 

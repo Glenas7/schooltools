@@ -231,7 +231,7 @@ const SchoolSelector: React.FC<SchoolSelectorProps> = ({
           
           <div className="flex justify-between items-center">
             <div className="text-green-600 font-medium">✓ Automatically selected</div>
-            {(school.userRole === 'admin' || school.userRole === 'superadmin') && (
+            {(school.userRole === 'admin' || school.userRole === 'superadmin') && school.accessType === 'school' && (
               <Button
                 variant="outline"
                 size="sm"
@@ -337,7 +337,7 @@ const SchoolSelector: React.FC<SchoolSelectorProps> = ({
                   </Button>
                 )}
                 
-                {(school.userRole === 'admin' || school.userRole === 'superadmin') && (
+                {(school.userRole === 'admin' || school.userRole === 'superadmin') && school.accessType === 'school' && (
                   <Button
                     variant="outline"
                     size="sm"
