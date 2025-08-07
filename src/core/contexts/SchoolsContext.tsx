@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { supabase } from '@/core/lib/supabaseClient';
 import { School, SchoolWithRole, SchoolsContextType, CreateSchoolData, UserRole } from '../types';
 import { useAuth } from './AuthContext';
@@ -11,7 +11,7 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [error, setError] = useState<string | null>(null);
   const { user, isAuthenticated } = useAuth();
 
-  const fetchSchools = async () => {
+  const fetchSchools = useCallback(async () => {
     if (!user || !isAuthenticated) {
       setSchools([]);
       setLoading(false);
@@ -88,7 +88,7 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, isAuthenticated, supabase]); // Dependencies for useCallback
 
   const createSchool = async (schoolData: CreateSchoolData): Promise<School> => {
     if (!user) {
@@ -182,7 +182,7 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     fetchSchools();
-  }, [user, isAuthenticated]);
+  }, [fetchSchools]); // Now depends on the stable useCallback function
 
   const value: SchoolsContextType = {
     schools,
