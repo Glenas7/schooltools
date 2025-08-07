@@ -86,7 +86,7 @@ export const useModules = () => {
           role,
           granted_by,
           granted_at,
-          users!user_schools_modules_user_id_fkey(
+          users:user_id(
             id,
             name,
             email
@@ -98,14 +98,33 @@ export const useModules = () => {
 
       if (error) throw error;
 
-      return (data || []).map(item => ({
-        user_id: item.user_id,
-        user_name: item.users.name,
-        user_email: item.users.email,
-        user_role: item.role,
-        granted_by: item.granted_by,
-        granted_at: item.granted_at
-      }));
+      console.log('Raw module users data:', data);
+
+      return (data || []).map(item => {
+        console.log('Processing item:', item);
+        
+        // Handle case where users join might be null
+        if (!item.users) {
+          console.warn('No user data found for user_id:', item.user_id);
+          return {
+            user_id: item.user_id,
+            user_name: 'Unknown User',
+            user_email: 'unknown@example.com',
+            user_role: item.role,
+            granted_by: item.granted_by,
+            granted_at: item.granted_at
+          };
+        }
+
+        return {
+          user_id: item.user_id,
+          user_name: item.users.name,
+          user_email: item.users.email,
+          user_role: item.role,
+          granted_by: item.granted_by,
+          granted_at: item.granted_at
+        };
+      });
     } catch (error) {
       console.error('Error fetching module users:', error);
       return [];
