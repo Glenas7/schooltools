@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/core/lib/supabaseClient';
-import { useAuth } from '@/core/contexts';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/shared/components/ui/card';
@@ -15,29 +14,57 @@ const ResetPasswordForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isVerifyingToken, setIsVerifyingToken] = useState(true);
+  const [isTokenValid, setIsTokenValid] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { session, loading: authLoading } = useAuth();
+  const [searchParams] = useSearchParams();
   
   useEffect(() => {
-    if (authLoading) {
-      console.log("ResetPasswordForm: Auth is loading, waiting...");
-      return;
-    }
-
-    console.log("ResetPasswordForm: Auth loading complete. Current session:", session, "Is Success:", isSuccess);
-
-    if (isSuccess) {
-      return;
-    }
-
-    if (!session) {
-      setError('Invalid or missing reset token, or the link has expired. Please request a new password reset link.');
-    } else {
-      setError(null);
-      console.log("ResetPasswordForm: Valid session detected, ready for password update.");
-    }
-  }, [session, authLoading, isSuccess]);
+    const verifyResetToken = async () => {
+      const tokenHash = searchParams.get('token_hash');
+      const type = searchParams.get('type');
+      
+      // Debug: Log all URL parameters
+      console.log("ResetPasswordForm: Full URL:", window.location.href);
+      console.log("ResetPasswordForm: All search params:", Object.fromEntries(searchParams.entries()));
+      console.log("ResetPasswordForm: token_hash:", tokenHash);
+      console.log("ResetPasswordForm: type:", type);
+      
+      if (!tokenHash || type !== 'recovery') {
+        console.log("ResetPasswordForm: Missing or invalid parameters");
+        setError('Invalid or missing reset token. Please request a new password reset link.');
+        setIsVerifyingToken(false);
+        return;
+      }
+      
+      try {
+        // Verify the OTP token to establish a session for password reset
+        const { data, error: verifyError } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: 'recovery'
+        });
+        
+        if (verifyError) {
+          console.error('Token verification failed:', verifyError);
+          setError('Invalid or expired reset token. Please request a new password reset link.');
+          setIsTokenValid(false);
+        } else {
+          console.log('Token verified successfully:', data);
+          setIsTokenValid(true);
+          setError(null);
+        }
+      } catch (err) {
+        console.error('Error verifying reset token:', err);
+        setError('Failed to verify reset token. Please try again.');
+        setIsTokenValid(false);
+      } finally {
+        setIsVerifyingToken(false);
+      }
+    };
+    
+    verifyResetToken();
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,10 +115,17 @@ const ResetPasswordForm = () => {
     }
   };
 
-  if (authLoading && !error) {
+  if (isVerifyingToken) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 p-4">
-        <p>Verifying reset link...</p>
+        <Card className="w-full max-w-md shadow-xl">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p>Verifying reset link...</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -120,7 +154,7 @@ const ResetPasswordForm = () => {
                 Redirecting to login page...
               </AlertDescription>
             </Alert>
-          ) : (
+          ) : isTokenValid ? (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <label htmlFor="password" className="text-sm font-medium">New Password</label>
@@ -159,11 +193,19 @@ const ResetPasswordForm = () => {
               <Button 
                 type="submit" 
                 className="w-full bg-primary hover:bg-primary/90" 
-                disabled={isLoading || !!error}
+                disabled={isLoading}
               >
                 {isLoading ? 'Processing...' : 'Reset Password'}
               </Button>
             </form>
+          ) : (
+            <Alert className="mb-4 bg-red-50 border-red-200 text-red-700">
+              <AlertDescription className="text-center">
+                The password reset link is invalid or has expired.
+                <br />
+                Please request a new password reset link.
+              </AlertDescription>
+            </Alert>
           )}
         </CardContent>
         <CardFooter className="flex justify-center">
