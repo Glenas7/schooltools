@@ -95,7 +95,7 @@ const AuthenticatedApp: React.FC = () => {
                           <Route path="/scheduler/login" element={<SchedulerLogin />} />
           <Route path="/signup" element={!isAuthenticated ? <Signup /> : <Navigate to="/" replace />} />
           <Route path="/forgot-password" element={!isAuthenticated ? <ForgotPassword /> : <Navigate to="/" replace />} />
-          <Route path="/reset-password" element={!isAuthenticated ? <ResetPassword /> : <Navigate to="/" replace />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/auth-redirect" element={<AuthRedirectHandler />} />
 
           <Route path="/index" element={isAuthenticated ? <Index /> : <Navigate to="/login" replace />} />
