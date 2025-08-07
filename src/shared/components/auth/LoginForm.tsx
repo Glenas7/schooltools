@@ -5,12 +5,13 @@ import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { useToast } from '@/shared/components/ui/use-toast';
-import { User, Lock, GraduationCap } from 'lucide-react';
+import { User, Lock, GraduationCap, AlertTriangle, Mail, X } from 'lucide-react';
 
 const LoginForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
   const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -19,17 +20,12 @@ const LoginForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setVerificationError(null); // Clear any previous verification errors
 
     try {
       await login(email, password);
     } catch (error: unknown) {
       console.error('Login error:', error);
-      console.log('Error details:', { 
-        error, 
-        message: error instanceof Error ? error.message : String(error),
-        name: error instanceof Error ? error.name : 'unknown',
-        stack: error instanceof Error ? error.stack : 'no stack'
-      });
       
       // Provide more specific error messages
       let errorMessage = "Invalid email or password.";
@@ -53,8 +49,10 @@ const LoginForm = () => {
                  allErrorContent.includes('confirm your email') ||
                  allErrorContent.includes('email_unconfirmed') ||
                  allErrorContent.includes('authapierror: email not confirmed')) {
-        errorTitle = "Email not verified";
-        errorMessage = "Please check your email inbox and click the verification link we sent you before signing in. Don't see the email? Check your spam folder.";
+        // Set persistent verification error banner instead of toast
+        setVerificationError("Please check your email inbox and click the verification link we sent you before signing in. Don't see the email? Check your spam folder.");
+        setIsLoading(false);
+        return; // Don't show toast for verification errors
       } else if (errorMsg?.includes('Too many requests')) {
         errorTitle = "Too many attempts";
         errorMessage = "Too many login attempts. Please wait a moment before trying again.";
@@ -68,8 +66,6 @@ const LoginForm = () => {
       } else if (errorMsg) {
         errorMessage = errorMsg;
       }
-      
-      console.log('About to show toast:', { errorTitle, errorMessage });
       
       toast({
         title: errorTitle,
@@ -120,6 +116,40 @@ const LoginForm = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Email Verification Error Banner */}
+          {verificationError && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                </div>
+                <div className="ml-3 flex-1">
+                  <h3 className="text-sm font-semibold text-amber-800">
+                    Email not verified
+                  </h3>
+                  <p className="mt-1 text-sm text-amber-700">
+                    {verificationError}
+                  </p>
+                  <div className="mt-3 flex items-center space-x-4">
+                    <div className="flex items-center text-xs text-amber-600">
+                      <Mail className="h-4 w-4 mr-1" />
+                      Check your email inbox and spam folder
+                    </div>
+                  </div>
+                </div>
+                <div className="ml-3 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setVerificationError(null)}
+                    className="text-amber-400 hover:text-amber-600 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium">Email</label>
@@ -130,7 +160,10 @@ const LoginForm = () => {
                   type="email" 
                   placeholder="Enter your email address" 
                   value={email} 
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (verificationError) setVerificationError(null); // Clear error when user types
+                  }}
                   required
                   className="w-full pl-10"
                 />
@@ -150,7 +183,10 @@ const LoginForm = () => {
                   type="password" 
                   placeholder="Enter your password" 
                   value={password} 
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (verificationError) setVerificationError(null); // Clear error when user types
+                  }}
                   required
                   className="w-full pl-10"
                 />
