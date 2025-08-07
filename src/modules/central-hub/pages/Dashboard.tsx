@@ -1,4 +1,5 @@
 import React from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth, useSchools, SchoolWithRole } from '@/core/contexts'
 import { Button } from '@/shared/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card'
@@ -8,6 +9,7 @@ import AddSchoolModal from '../components/schools/AddSchoolModal.tsx'
 import ModuleSelector from '../components/modules/ModuleSelector.tsx'
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { schools, loading } = useSchools()
   const [selectedSchool, setSelectedSchool] = React.useState<SchoolWithRole | null>(null)
