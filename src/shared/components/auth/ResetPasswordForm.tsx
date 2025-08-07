@@ -92,14 +92,19 @@ const ResetPasswordForm = () => {
       setIsSuccess(true);
       toast({
         title: 'Password reset successfully',
-        description: 'Your password has been updated. You can now login with your new password.',
+        description: 'Your password has been updated. Redirecting to login...',
       });
       
+      // Immediately sign out and redirect to prevent auth state confusion
+      console.log('ResetPasswordForm: Starting signOut process...');
       await supabase.auth.signOut();
+      console.log('ResetPasswordForm: SignOut completed, redirecting to login...');
       
+      // Force a full page redirect to ensure clean auth state
       setTimeout(() => {
-        navigate('/login');
-      }, 2000);
+        console.log('ResetPasswordForm: Redirecting to /login');
+        window.location.href = '/login';
+      }, 500);
       
     } catch (err: unknown) {
       console.error('Error resetting password:', err);
