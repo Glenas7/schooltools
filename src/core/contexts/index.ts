@@ -104,9 +104,39 @@ export const useModules = () => {
         throw joinError;
       }
 
-      // If join worked and has data with users, use it
-      if (joinData && joinData.length > 0 && joinData.some(item => item.users)) {
-        console.log('Using join approach - data found');
+      // If join worked and ALL items have user data, use it
+      if (joinData && joinData.length > 0 && joinData.every(item => item.users)) {
+        console.log('Using join approach - all users have data');
+        return joinData.map(item => ({
+          user_id: item.user_id,
+          user_name: item.users.name,
+          user_email: item.users.email,
+          user_role: item.role,
+          granted_by: item.granted_by,
+          granted_at: item.granted_at
+        }));
+      }
+      
+      // If join worked but some users are null (RLS issue), use mixed approach
+      if (joinData && joinData.length > 0) {
+        console.log('Join approach partially worked - some users null, using fallback for missing data');
+        
+        // Get the user IDs that have null user data
+        const missingUserIds = joinData.filter(item => !item.users).map(item => item.user_id);
+        
+        if (missingUserIds.length > 0) {
+          console.log('Missing user data for IDs:', missingUserIds);
+          
+          // Try to get missing user data separately
+          const { data: missingUsers, error: missingUsersError } = await supabase
+            .from('users')
+            .select('id, name, email')
+            .in('id', missingUserIds);
+          
+          console.log('Missing users fallback query:', { missingUsers, missingUsersError });
+        }
+        
+        // Return data with what we have
         return joinData.map(item => ({
           user_id: item.user_id,
           user_name: item.users?.name || 'Unknown User',
