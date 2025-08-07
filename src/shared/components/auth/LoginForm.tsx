@@ -34,9 +34,14 @@ const LoginForm = () => {
       if (errorMsg?.includes('Invalid login credentials') || 
           errorMsg?.includes('invalid credentials')) {
         errorMessage = "The email or password you entered is incorrect. Please check your credentials and try again.";
-      } else if (errorMsg?.includes('Email not confirmed')) {
+      } else if (errorMsg?.includes('Email not confirmed') || 
+                 errorMsg?.includes('email_not_confirmed') ||
+                 errorMsg?.includes('not confirmed') ||
+                 errorMsg?.includes('email verification') ||
+                 errorMsg?.includes('confirm your email') ||
+                 errorMsg?.includes('email_unconfirmed')) {
         errorTitle = "Email not verified";
-        errorMessage = "Please check your email and click the verification link before signing in.";
+        errorMessage = "Please check your email inbox and click the verification link we sent you before signing in. Don't see the email? Check your spam folder.";
       } else if (errorMsg?.includes('Too many requests')) {
         errorTitle = "Too many attempts";
         errorMessage = "Too many login attempts. Please wait a moment before trying again.";

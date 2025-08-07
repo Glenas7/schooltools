@@ -4,7 +4,7 @@ import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { useToast } from '@/shared/components/ui/use-toast';
-import { User, Mail, Lock, GraduationCap, Loader2, Check, X } from 'lucide-react';
+import { User, Mail, Lock, GraduationCap, Loader2, Check, X, CheckCircle, ArrowRight } from 'lucide-react';
 import { supabase } from '@/core/lib/supabaseClient';
 
 const SignupForm = () => {
@@ -15,6 +15,7 @@ const SignupForm = () => {
     confirmPassword: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [signupSuccess, setSignupSuccess] = useState(false);
   const [emailValidation, setEmailValidation] = useState<{
     isChecking: boolean;
     isAvailable: boolean | null;
@@ -175,13 +176,8 @@ const SignupForm = () => {
       }
 
       if (data.user) {
-        toast({
-          title: "Account created successfully!",
-          description: "Please check your email to verify your account, then you'll be able to create your school.",
-        });
-
-        // Navigate to school selection after successful signup (which will show school creation for new users)
-        navigate('/');
+        // Show success state instead of navigating away
+        setSignupSuccess(true);
       }
     } catch (error: unknown) {
       console.error('Signup error:', error);
@@ -211,6 +207,47 @@ const SignupForm = () => {
       setIsLoading(false);
     }
   };
+
+  // Show success message if signup was successful
+  if (signupSuccess) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">
+        <Card className="w-full max-w-md shadow-xl">
+          <CardHeader className="space-y-1">
+            <div className="flex items-center justify-center mb-4">
+              <CheckCircle className="h-12 w-12 text-green-500" />
+            </div>
+            <CardTitle className="text-2xl font-bold text-center text-green-600">Account Created Successfully!</CardTitle>
+            <CardDescription className="text-center">
+              Your account has been created. Please verify your email before logging in.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center space-y-4">
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-sm text-blue-800 leading-relaxed">
+                <strong>📧 Check your email inbox</strong><br/>
+                We've sent a verification link to <strong>{formData.email}</strong>. 
+                Click the link in the email to verify your account before signing in.
+              </p>
+            </div>
+            <p className="text-sm text-gray-600">
+              Don't see the email? Check your spam folder or try signing up again.
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Button 
+              onClick={() => navigate('/login')} 
+              className="w-full"
+              variant="default"
+            >
+              Go to Login Page
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">
