@@ -79,7 +79,8 @@ export const useModules = () => {
 
   const getModuleUsersForSchool = async (schoolId: string, moduleId: string) => {
     try {
-      const { data, error } = await supabase
+      // First, try the join approach
+      const { data: joinData, error: joinError } = await supabase
         .from('user_schools_modules')
         .select(`
           user_id,
@@ -96,38 +97,73 @@ export const useModules = () => {
         .eq('module_id', moduleId)
         .eq('active', true);
 
-      if (error) throw error;
+      console.log('Join query result:', { joinData, joinError });
 
-      console.log('Raw module users data:', data);
-      console.log('Query params:', { schoolId, moduleId });
-      console.log('Data length:', data?.length || 0);
+      if (joinError) {
+        console.error('Join query error:', joinError);
+        throw joinError;
+      }
 
-      return (data || []).map(item => {
-        console.log('Processing item:', item);
-        console.log('Item users field:', item.users);
-        
-        // Handle case where users join might be null
-        if (!item.users) {
-          console.warn('No user data found for user_id:', item.user_id);
-          return {
-            user_id: item.user_id,
-            user_name: 'Unknown User',
-            user_email: 'unknown@example.com',
-            user_role: item.role,
-            granted_by: item.granted_by,
-            granted_at: item.granted_at
-          };
-        }
-
-        return {
+      // If join worked and has data with users, use it
+      if (joinData && joinData.length > 0 && joinData.some(item => item.users)) {
+        console.log('Using join approach - data found');
+        return joinData.map(item => ({
           user_id: item.user_id,
-          user_name: item.users.name,
-          user_email: item.users.email,
+          user_name: item.users?.name || 'Unknown User',
+          user_email: item.users?.email || 'unknown@example.com',
           user_role: item.role,
           granted_by: item.granted_by,
           granted_at: item.granted_at
+        }));
+      }
+
+      // If join didn't work or returned empty users, try separate queries
+      console.log('Join approach failed or returned empty users, trying separate queries');
+      
+      // Get module users first
+      const { data: moduleUsers, error: moduleError } = await supabase
+        .from('user_schools_modules')
+        .select('user_id, role, granted_by, granted_at')
+        .eq('school_id', schoolId)
+        .eq('module_id', moduleId)
+        .eq('active', true);
+
+      if (moduleError) throw moduleError;
+      
+      console.log('Module users without join:', moduleUsers);
+
+      if (!moduleUsers || moduleUsers.length === 0) {
+        console.log('No module users found');
+        return [];
+      }
+
+      // Get user details separately
+      const userIds = moduleUsers.map(mu => mu.user_id);
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .in('id', userIds);
+
+      if (usersError) {
+        console.error('Users query error:', usersError);
+        // Continue with unknown users rather than failing
+      }
+
+      console.log('Users data:', users);
+
+      // Combine the data
+      return moduleUsers.map(moduleUser => {
+        const userData = users?.find(u => u.id === moduleUser.user_id);
+        return {
+          user_id: moduleUser.user_id,
+          user_name: userData?.name || 'Unknown User',
+          user_email: userData?.email || 'unknown@example.com',
+          user_role: moduleUser.role,
+          granted_by: moduleUser.granted_by,
+          granted_at: moduleUser.granted_at
         };
       });
+
     } catch (error) {
       console.error('Error fetching module users:', error);
       return [];
@@ -174,9 +210,9 @@ export const useModules = () => {
   };
 
   return {
-    modules: [],
-    loading: false,
-    error: null,
+  modules: [],
+  loading: false,
+  error: null,
     getUserModulesForSchool,
     getModuleUsersForSchool,
     grantModuleAccess,
