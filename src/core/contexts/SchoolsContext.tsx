@@ -22,25 +22,33 @@ export const SchoolsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setLoading(true);
       setError(null);
 
+      // Use new RPC to get all schools where user has any access (school-level or module-level)
       const { data, error: fetchError } = await supabase
-        .from('user_schools')
-        .select(`
-          role,
-          school:schools!inner(*)
-        `)
-        .eq('user_id', user.id)
-        .eq('active', true)
-        .eq('school.active', true)
-        .eq('school.deleted', false);
-
+        .rpc('get_user_accessible_schools', { target_user_id: user.id });
 
       if (fetchError) {
         throw fetchError;
       }
 
+      console.log('User accessible schools:', data);
+
       const schoolsWithRoles: SchoolWithRole[] = await Promise.all(data?.map(async item => {
-        const school = item.school as unknown as School;
-        const role = item.role as UserRole;
+        // Transform the RPC result to match our expected format
+        const school: School = {
+          id: item.school_id,
+          name: item.school_name,
+          description: item.school_description,
+          slug: item.school_slug,
+          active: item.school_active,
+          deleted: item.school_deleted,
+          created_at: item.school_created_at,
+          updated_at: item.school_updated_at,
+          google_sheet_url: item.school_google_sheet_url
+        };
+        const role = item.user_role as UserRole;
+        
+        // Note: item.access_type indicates whether access is from 'school' or 'module' level
+        console.log(`School ${school.name}: role=${role}, access_type=${item.access_type}`);
         
         // Get enabled modules for this school first
         const { data: enabledModules, error: enabledError } = await supabase
