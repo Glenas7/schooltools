@@ -99,9 +99,12 @@ export const useModules = () => {
       if (error) throw error;
 
       console.log('Raw module users data:', data);
+      console.log('Query params:', { schoolId, moduleId });
+      console.log('Data length:', data?.length || 0);
 
       return (data || []).map(item => {
         console.log('Processing item:', item);
+        console.log('Item users field:', item.users);
         
         // Handle case where users join might be null
         if (!item.users) {
